@@ -488,6 +488,12 @@ function editorButton(state, terminal) {
   return `<button class="btn quiet" data-act="open-editor" data-id="${esc(terminal.id)}" title="Open nvim beside Claude, in ${esc(terminal.cwd)}"><span class="glyph">${G.edit}</span><span class="t">Open nvim</span></button>`
 }
 
+function endButton(terminal) {
+  if (terminal.exited) return ''
+  const label = terminal.kind === 'terminal' ? 'Close terminal' : 'End session'
+  return `<button class="btn quiet" data-act="confirm-end" title="${label} (Ctrl+Shift+W)"><span class="glyph">${G.cross}</span><span class="t">${label}</span></button>`
+}
+
 function renderSession() {
   if (view.pendingOpen && ui.state?.terminals.some(t => t.id === view.pendingOpen)) {
     openSession(view.pendingOpen)
@@ -520,6 +526,7 @@ function renderSession() {
         <span class="summary" title="${esc(ticket.summary)}">${esc(ticket.summary)}</span>
         ${editorButton(state, terminal)}
         ${timeCell(ticket)}
+        ${endButton(terminal)}
       </div>
       <div class="body">
         ${track(ticket, state.columns)}
@@ -538,10 +545,11 @@ function renderSession() {
       <div class="head">
         ${back}
         <span class="summary">${esc(terminal.label)}</span>
+        ${status}
         ${editorButton(state, terminal)}
         ${review ? `<button class="btn quiet" data-act="open-url" data-url="${esc(review.url)}/files"><span class="glyph">${G.open}</span><span class="t">Open the diff</span></button>` : ''}
+        ${endButton(terminal)}
       </div>
-      <div class="body">${status}</div>
     </div>`
   }
   $('session-bar').innerHTML = context
@@ -611,6 +619,7 @@ function syncTerminals() {
 Object.assign(handlers, {
   'show-list': () => showList(),
   'open-session': el => openSession(el.dataset.id),
+  'confirm-end': () => closePane(view.active),
   'end-session': el => {
     const id = el.dataset.id
     view.confirmEnd = null

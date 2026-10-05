@@ -32,10 +32,10 @@
   --red: #f97171;
 
   --sans: "Recursive", system-ui, sans-serif;
-  --step--1: 12px;
-  --step-0: 14px;
-  --step-1: 16px;
-  --step-2: 20px;
+  --step--1: 10px;
+  --step-0: 12px;
+  --step-1: 14px;
+  --step-2: 18px;
   --gutter: 20px;
   --bar: 48px;
   --rail: 236px;
@@ -1156,7 +1156,7 @@ body:not([data-view="list"]) .panes { display: none; }
   position: relative;
   z-index: 2;
   flex: none;
-  padding: 10px 16px;
+  padding: 4px 16px;
   background: var(--raised);
   border-bottom: 1px solid var(--line);
 }
@@ -1166,6 +1166,7 @@ body:not([data-view="list"]) .panes { display: none; }
 .ticket.in-session:focus-within {
   margin: 0;
   padding: 0;
+  gap: 2px;
   background: none;
 }
 
@@ -1174,7 +1175,7 @@ body:not([data-view="list"]) .panes { display: none; }
 
 .ticket.in-session .head,
 .ticket.in-session .body {
-  height: 32px;
+  height: 28px;
   align-items: center;
 }
 
