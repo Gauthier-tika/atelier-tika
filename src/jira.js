@@ -153,7 +153,6 @@ class Jira {
       if (!this.flagOption) throw new Error(`The Flagged field cannot be edited on ${key}`)
     }
     await this.request('PUT', `/rest/api/3/issue/${key}`, {
-      params: { notifyUsers: 'false' },
       body: { fields: { [field]: blocked ? [{ id: this.flagOption }] : null } }
     })
   }
@@ -169,7 +168,6 @@ class Jira {
     const id = this.qualifOptions[number]
     if (!id) throw new Error(`Jira has no Qualif ${number} option`)
     await this.request('PUT', `/rest/api/3/issue/${key}`, {
-      params: { notifyUsers: 'false' },
       body: { fields: { [field]: { id } } }
     })
   }
