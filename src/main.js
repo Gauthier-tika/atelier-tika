@@ -92,13 +92,17 @@ async function load(name, task, apply) {
   }
 }
 
+let jiraLoading = null
 const loaders = {
-  jira: (reconcile = []) => load('jira', async () => [await jira.boardColumns(), await jira.tickets(reconcile), await jira.unassigned()], ([columns, tickets, unassigned]) => {
+  jira: (reconcile = []) => jiraLoading = load('jira', async () => [await jira.boardColumns(), await jira.tickets(reconcile), await jira.unassigned()], ([columns, tickets, unassigned]) => {
     data.columns = columns
     data.tickets = tickets
     data.unassigned = unassigned.filter(item => !tickets.some(t => t.key === item.key))
   }),
-  github: () => load('github', () => github.pullRequests(config), result => { data.github = result }).then(() => loaders.deploys()),
+  github: () => load('github', async () => {
+    if (!data.tickets) await jiraLoading
+    return github.pullRequests(config, tickets().map(t => t.key))
+  }, result => { data.github = result }).then(() => loaders.deploys()),
   deploys: () => load('deploys', () => github.qualifDeploys(config, qualifBranches()), result => { data.deploys = result }),
   time: () => load('time', () => jira.week(), result => { data.time = result })
 }

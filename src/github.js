@@ -69,19 +69,34 @@ async function graphql(query, variables, attempts = 2) {
   }
 }
 
-async function pullRequests(config) {
+// PRs on my tickets that someone else opened: by branch name (head: qualifiers are ORed) and by key in the
+// title or body. GitHub allows five boolean operators per search, hence chunks of six keys.
+async function ticketSearches(org, keys) {
+  const chunks = []
+  for (let i = 0; i < keys.length; i += 6) chunks.push(keys.slice(i, i + 6))
+  const results = await Promise.all(chunks.flatMap(chunk => [
+    graphql(searchQuery, { q: `is:pr org:${org} ${chunk.map(key => `head:${key}`).join(' ')}`, first: 40 }),
+    graphql(searchQuery, { q: `is:pr org:${org} ${chunk.join(' OR ')}`, first: 40 })
+  ]))
+  return results.flatMap(result => result.search.nodes)
+}
+
+async function pullRequests(config, keys = []) {
   const org = config.githubOrg
   const since = new Date(Date.now() - 45 * 86400000).toISOString().slice(0, 10)
-  const [mine, open, requested] = await Promise.all([
+  const [mine, open, requested, onTickets] = await Promise.all([
     graphql(searchQuery, { q: `is:pr author:@me org:${org} updated:>=${since} sort:updated-desc`, first: 40 }),
     graphql(searchQuery, { q: `is:pr is:open draft:false archived:false -author:@me org:${org} sort:updated-desc`, first: 40 }),
-    graphql(requestedQuery, { q: `is:pr is:open review-requested:@me org:${org}` })
+    graphql(requestedQuery, { q: `is:pr is:open review-requested:@me org:${org}` }),
+    ticketSearches(org, keys)
   ])
   const viewer = mine.viewer.login
   const requestedIds = new Set(requested.search.nodes.map(node => node.id))
+  const seen = new Set()
+  const ours = [...mine.search.nodes, ...onTickets].filter(node => node.id && !seen.has(node.id) && seen.add(node.id))
   return {
     viewer,
-    mine: mine.search.nodes.filter(node => node.id).map(pr => shape(pr, viewer)),
+    mine: ours.map(pr => shape(pr, viewer)),
     reviews: open.search.nodes
       .filter(node => node.id)
       .map(pr => ({ ...shape(pr, viewer), requested: requestedIds.has(pr.id) }))
