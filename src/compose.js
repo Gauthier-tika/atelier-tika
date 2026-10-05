@@ -79,11 +79,14 @@ function compose(data, timer, config, terminals = []) {
     const first = past.find(p => p.id === session.id)?.prompt || ''
     return { ...session, first, ...(embedded ? { embedded: embedded.id } : {}) }
   })
+  const hidden = new Set(config.hiddenColumns || [])
   const claimed = new Set()
   const claimedPrs = new Set()
 
   const tickets = (data.tickets || []).map(ticket => {
     const station = columns.findIndex(column => column.statusIds.includes(ticket.status.id))
+    const column = station >= 0 ? columns[station].name : ticket.status.name
+    if (hidden.has(column)) return null
     const ticketPrs = prs
       .filter(pr => keysOf(pr).includes(ticket.key))
       .sort((a, b) => (a.state === 'OPEN' ? 0 : 1) - (b.state === 'OPEN' ? 0 : 1) || b.updatedAt.localeCompare(a.updatedAt))
@@ -103,7 +106,8 @@ function compose(data, timer, config, terminals = []) {
     return {
       ...ticket,
       station,
-      column: station >= 0 ? columns[station].name : ticket.status.name,
+      column,
+      tone: config.columnColors?.[column] || null,
       stage: station >= 0 ? stageOf[columns[station].id] || 'mine' : 'mine',
       pr,
       otherPrs: ticketPrs.slice(1),
@@ -121,7 +125,7 @@ function compose(data, timer, config, terminals = []) {
         runningSince: timer.running?.key === ticket.key ? timer.running.startedAt : null
       }
     }
-  })
+  }).filter(Boolean)
 
   tickets.sort((a, b) => {
     for (let i = 0; i < a.rank.length; i++) if (a.rank[i] !== b.rank[i]) return a.rank[i] - b.rank[i]

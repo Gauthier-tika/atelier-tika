@@ -29,6 +29,7 @@
   --cyan: #8acfef;
   --green: #13be76;
   --sand: #e8c59b;
+  --orange: #f5a35c;
   --red: #f97171;
 
   --sans: "Recursive", system-ui, sans-serif;
@@ -600,6 +601,12 @@ button {
   width: 3px;
   background: transparent;
 }
+
+/* columnColors: tints the stripe and column name; attention, working and blocked still win the stripe */
+.ticket.tone-orange::before { background: var(--orange); }
+.ticket.tone-green::before { background: var(--green); }
+.ticket.tone-orange .column { color: var(--orange); }
+.ticket.tone-green .column { color: var(--green); }
 
 .ticket.attention::before { background: var(--sand); }
 .ticket.working::before { background: var(--purple); }
