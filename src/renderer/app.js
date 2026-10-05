@@ -358,7 +358,7 @@ function renderLaunch(state) {
     <div class="launch-tools">
       <button class="tool" data-act="shell-repo" title="Open a plain terminal, without Claude, in ${esc(repo)}"><span class="glyph">${G.terminal}</span><span class="t">Terminal</span></button>
       <button class="tool" data-act="nvim-repo" title="Open nvim in ${esc(repo)}"><span class="glyph">${G.edit}</span><span class="t">nvim</span></button>
-      <button class="tool" data-act="sl-web" title="Show Sapling Web (sl web) on ${esc(repo)} inside Atelier" ${starting ? 'disabled' : ''}><span class="glyph">${G.smartlog}</span><span class="t">${starting ? 'Starting…' : 'sl web'}</span></button>
+      ${state.sapling ? `<button class="tool" data-act="sl-web" title="Show Sapling Web (sl web) on ${esc(repo)} inside Atelier" ${starting ? 'disabled' : ''}><span class="glyph">${G.smartlog}</span><span class="t">${starting ? 'Starting…' : 'sl web'}</span></button>` : ''}
     </div>`
 }
 

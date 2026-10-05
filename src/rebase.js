@@ -2,6 +2,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const { run } = require('./run')
+const sapling = require('./sapling')
 
 const root = path.join(os.homedir(), '.local/state/atelier/rebase')
 const gitEnv = { ...require('./run').env, GIT_EDITOR: 'true', GIT_PAGER: 'cat', LC_ALL: 'C' }
@@ -28,12 +29,20 @@ async function conflicted(dir) {
 }
 
 async function localAhead(repoDir, pr) {
+  if (!(await sapling.available())) return localBranchAhead(repoDir, pr)
   try {
     const out = await run('sl', ['log', '-r', 'draft()', '-T', '{node} {github_pull_request_number}\\n'], { cwd: repoDir })
     return out.split('\n').map(line => line.split(' ')).filter(([node, number]) => number === String(pr.number) && node !== pr.head).map(([node]) => node.slice(0, 12))
   } catch {
     return []
   }
+}
+
+async function localBranchAhead(repoDir, pr) {
+  const local = (await git(repoDir, ['rev-parse', '--verify', '-q', `refs/heads/${pr.branch}`]).catch(() => '')).trim()
+  if (!local || local === pr.head) return []
+  const behind = await git(repoDir, ['merge-base', '--is-ancestor', local, pr.head]).then(() => true, () => false)
+  return behind ? [] : [local.slice(0, 12)]
 }
 
 async function remoteHeads(repoDir, pr) {
@@ -59,13 +68,15 @@ async function removeWorktree(repoDir, dir) {
 }
 
 async function start(repoDir, pr) {
-  const ahead = await localAhead(repoDir, pr)
-  if (ahead.length) throw new Error(`Your local commit ${ahead[0]} for #${pr.number} differs from the one on GitHub. Push it with sl pr submit first, or rebase it with sl`)
-
   const remote = await remoteHeads(repoDir, pr)
   if (!remote.base) throw new Error(`origin/${pr.base} does not exist any more`)
   if (remote.head !== pr.head) throw new Error(`${pr.branch} moved on GitHub since Atelier last looked. Refresh and try again`)
   await git(repoDir, ['fetch', '-q', 'origin', `refs/heads/${pr.base}`, `refs/heads/${pr.branch}`])
+
+  const ahead = await localAhead(repoDir, pr)
+  if (ahead.length) throw new Error(await sapling.available()
+    ? `Your local commit ${ahead[0]} for #${pr.number} differs from the one on GitHub. Push it with sl pr submit first, or rebase it with sl`
+    : `Your local ${pr.branch} branch (${ahead[0]}) differs from the one on GitHub. Push it first, or rebase it by hand`)
 
   if (await git(repoDir, ['merge-base', '--is-ancestor', remote.base, pr.head]).then(() => true, () => false))
     return { status: 'current', base: remote.base }
@@ -104,7 +115,7 @@ async function start(repoDir, pr) {
   return { status: 'pushed', newHead, ...context }
 }
 
-function prompt(key, pr, { upstream, base, oldHead, files = [] }) {
+function prompt(key, pr, { upstream, base, oldHead, files = [] }, withSapling = true) {
   return [
     `${key}: Atelier started rebasing PR #${pr.number} (${pr.branch}) onto origin/${pr.base} (${base.slice(0, 12)}) in this git worktree, and the rebase stopped on conflicts${files.length ? ` in ${files.join(', ')}` : ''}.`,
     '',
@@ -114,7 +125,7 @@ function prompt(key, pr, { upstream, base, oldHead, files = [] }) {
     `4. Show me \`git range-diff ${upstream.slice(0, 12)}..${oldHead.slice(0, 12)} ${base.slice(0, 12)}..HEAD\` and one line per resolved conflict, then wait for my go.`,
     `5. Only after my go: \`git push --force-with-lease=refs/heads/${pr.branch}:${oldHead} origin HEAD:refs/heads/${pr.branch}\`.`,
     '',
-    'Use git, not sl, in this worktree: Sapling does not work in git worktrees. Do not touch ~/Dev/modulo.'
+    withSapling ? 'Use git, not sl, in this worktree: Sapling does not work in git worktrees. Do not touch ~/Dev/modulo.' : 'Do not touch ~/Dev/modulo.'
   ].join('\n')
 }
 

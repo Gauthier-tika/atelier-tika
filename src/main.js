@@ -11,6 +11,7 @@ const { compose, qualifPrs } = require('./compose')
 const { Qualifs } = require('./qualifs')
 const { run } = require('./run')
 const rebase = require('./rebase')
+const sapling = require('./sapling')
 const { Terminals } = require('./terminals')
 
 app.setName('atelier')
@@ -25,6 +26,7 @@ const data = {
   unassigned: null,
   github: null,
   deploys: null,
+  sapling: null,
   live: [],
   past: [],
   time: null,
@@ -67,7 +69,7 @@ function repoNamed(name) {
   return repo
 }
 
-const current = () => ({ ...compose({ ...data, qualifs: qualifs.list() }, timer.state, config, terminals.list()), repos: repos().map(r => r.name) })
+const current = () => ({ ...compose({ ...data, qualifs: qualifs.list() }, timer.state, config, terminals.list()), repos: repos().map(r => r.name), sapling: data.sapling })
 
 const qualifBranches = () => data.github ? qualifs.list().map(q => `qualif-${data.github.viewer}-${q.number}`) : []
 
@@ -186,7 +188,7 @@ const actions = {
       key,
       label: `Rebase of #${pr.number} onto ${pr.base}`,
       cwd: context.dir,
-      args: [rebase.prompt(key, pr, context)]
+      args: [rebase.prompt(key, pr, context, data.sapling)]
     })
     const waiting = await rebase.resume(pr)
     if (waiting) {
@@ -197,7 +199,7 @@ const actions = {
     if (result.status === 'current') return `#${pr.number} already sits on top of origin/${pr.base}`
     if (result.status === 'pushed') {
       loaders.github()
-      return `Rebased #${pr.number} onto origin/${pr.base} and force-pushed it. Your local Sapling commit is now the old version`
+      return `Rebased #${pr.number} onto origin/${pr.base} and force-pushed it. ${data.sapling ? 'Your local Sapling commit' : `Your local ${pr.branch} branch, if you have one,`} is now the old version`
     }
     spawnClaude(result)
     return { view: id, message: `#${pr.number} conflicts with origin/${pr.base} in ${result.files.length} file${result.files.length > 1 ? 's' : ''}, Claude resolves it` }
@@ -238,6 +240,7 @@ const actions = {
   },
 
   async slWeb({ name }) {
+    if (!(await sapling.available())) throw new Error('Sapling is not installed, so sl web is not available')
     const repo = repoNamed(name)
     const server = JSON.parse(await run('sl', ['web', '--no-open', '--json'], { cwd: repo.dir, timeout: 30000 }))
     const url = new URL(server.url)
@@ -547,6 +550,10 @@ app.on('second-instance', (_event, argv) => {
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null)
+  sapling.available().then(found => {
+    data.sapling = found
+    push()
+  })
   createWindow()
   if (shotPath) {
     win.webContents.once('did-finish-load', screenshot)
