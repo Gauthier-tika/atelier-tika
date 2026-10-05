@@ -273,6 +273,25 @@ const actions = {
     push()
   },
 
+  endSession({ id }) {
+    const terminal = terminals.get(id)
+    if (!terminal) return
+    if (!terminal.exited) {
+      const shell = terminal.kind === 'terminal'
+      const choice = dialog.showMessageBoxSync(win, {
+        type: 'question',
+        buttons: [shell ? 'Close terminal' : 'End session', 'Keep it running'],
+        defaultId: 1,
+        cancelId: 1,
+        message: shell ? `Close ${terminal.label}?` : `End the Claude session on ${terminal.label}?`,
+        detail: 'Its split panes close with it.'
+      })
+      if (choice === 1) return
+    }
+    terminals.close(id)
+    push()
+  },
+
   splitShell({ parent }) {
     return { pane: terminals.spawnShell(parent).id }
   },
@@ -404,6 +423,11 @@ ipcMain.on('view', (_event, view, id) => {
   openView = view === 'session' ? id : null
   if (markOpenSessionSeen()) push()
   tagWindow(view === 'session')
+})
+ipcMain.on('menu', (event, items) => {
+  Menu.buildFromTemplate(items.map(item => item
+    ? { label: item.label, click: () => send('menu-pick', item.id) }
+    : { type: 'separator' })).popup({ window: BrowserWindow.fromWebContents(event.sender) })
 })
 ipcMain.handle('clipboard-read', () => clipboard.readText())
 ipcMain.handle('clipboard-write', (_event, text) => clipboard.writeText(String(text)))

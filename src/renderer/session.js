@@ -484,6 +484,61 @@ function renderNavSessions() {
     }).join('')}</div>` : ''
 }
 
+const shellQuote = value => `'${String(value).replace(/'/g, `'\\''`)}'`
+
+function copyText(text, what) {
+  window.atelier.clipboard.write(text)
+  toast(`Copied ${what}`)
+}
+
+function sessionMenu(t) {
+  const state = ui.state
+  const ticket = t.key && state.tickets.find(x => x.key === t.key)
+  const pr = t.prId ? state.reviews.find(r => r.id === t.prId) : ticket?.pr
+  const shell = t.kind === 'terminal'
+  const current = document.body.dataset.view === 'session' && view.active === t.id
+  const nvimOpen = state.terminals.some(x => x.id === `${t.id}~nvim` && !x.exited)
+  const claudeId = t.session?.id
+  return [
+    !current && { label: shell ? 'Open terminal' : 'Open session', run: () => openSession(t.id) },
+    ticket && { label: `Open ${t.key} in Jira`, run: () => act('openUrl', { url: ticket.url }) },
+    pr && { label: `Open #${pr.number} on GitHub`, run: () => act('openUrl', { url: pr.url }) },
+    '-',
+    t.kind === 'claude' && !t.exited && !nvimOpen && { label: 'Open nvim beside Claude', run: () => {
+      openSession(t.id)
+      handlers['open-editor']({ dataset: { id: t.id } })
+    } },
+    !t.exited && { label: 'Split with a shell', run: () => {
+      openSession(t.id)
+      split(view.focused.get(t.id), 'row')
+    } },
+    t.exited && t.key && { label: 'Resume the session', run: () => act('claudeOpen', { key: t.key }) },
+    t.exited && t.prId && { label: 'Start the review again', run: () => act('reviewWithClaude', { id: t.prId }) },
+    '-',
+    { label: 'Copy the directory path', run: () => copyText(t.cwd, 'the directory path') },
+    claudeId && { label: 'Copy the resume command', run: () => copyText(`cd ${shellQuote(t.cwd)} && claude --resume ${claudeId}`, 'the resume command') },
+    '-',
+    { label: t.exited ? 'Close' : shell ? 'Close terminal…' : 'End session…', run: () => act('endSession', { id: t.id }) }
+  ].filter(Boolean).filter((item, i, list) => item !== '-' || (i > 0 && list[i - 1] !== '-' && i < list.length - 1))
+}
+
+let menuItems = []
+
+function showMenu(items) {
+  menuItems = items
+  window.atelier.menu(items.map((item, i) => item === '-' ? null : { id: i, label: item.label }))
+}
+
+window.atelier.onMenuPick(id => menuItems[id]?.run?.())
+
+document.addEventListener('contextmenu', event => {
+  const el = event.target.closest('[data-act="open-session"]')
+  const terminal = el && ui.state?.terminals.find(t => t.id === el.dataset.id)
+  if (!terminal) return
+  event.preventDefault()
+  showMenu(sessionMenu(terminal))
+})
+
 function editorButton(state, terminal) {
   if (terminal.kind !== 'claude' || terminal.exited) return ''
   if (state.terminals.some(t => t.id === `${terminal.id}~nvim` && !t.exited)) return ''
