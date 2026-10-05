@@ -48,7 +48,11 @@ const nordTerminalTheme = {
   brightWhite: '#eceff4'
 }
 
-const terminalTheme = document.documentElement.dataset.theme === 'nord' ? nordTerminalTheme : defaultTerminalTheme
+const terminalTheme = () => document.documentElement.dataset.theme === 'nord' ? nordTerminalTheme : defaultTerminalTheme
+
+function applyTerminalTheme() {
+  for (const pane of view.panes.values()) pane.term.options.theme = terminalTheme()
+}
 
 const DEFAULT_FONT_SIZE = 12
 
@@ -89,7 +93,7 @@ function ensurePane(id) {
     scrollback: 10000,
     allowProposedApi: true,
     macOptionIsMeta: true,
-    theme: terminalTheme
+    theme: terminalTheme()
   })
   const fit = new FitAddon.FitAddon()
   term.loadAddon(fit)

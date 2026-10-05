@@ -16,6 +16,7 @@ const { Terminals } = require('./terminals')
 
 app.setName('atelier')
 const config = configModule.load()
+const THEMES = { default: '#212337', nord: '#2e3440' }
 const jira = new Jira(config)
 const timer = new Timer()
 const shotPath = process.env.ATELIER_SHOT
@@ -144,6 +145,13 @@ const actions = {
   refresh: () => refreshAll(),
 
   openUrl: ({ url }) => launch.openUrl(url),
+
+  setTheme({ theme }) {
+    if (!Object.hasOwn(THEMES, theme)) throw new Error(`Unknown theme ${theme}`)
+    config.theme = theme === 'default' ? null : theme
+    configModule.save({ theme: config.theme })
+    win.setBackgroundColor(THEMES[theme])
+  },
 
   async claudeOpen({ key, fresh }) {
     data.past = claude.past()
@@ -457,7 +465,7 @@ function createWindow() {
     minHeight: 420,
     show: !shotPath,
     frame: false,
-    backgroundColor: config.theme === 'nord' ? '#2e3440' : '#212337',
+    backgroundColor: THEMES[config.theme] || THEMES.default,
     title: 'Atelier',
     autoHideMenuBar: true,
     webPreferences: {

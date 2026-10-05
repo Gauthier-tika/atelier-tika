@@ -29,6 +29,7 @@ const G = {
   userPlus: svg('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/>'),
   server: svg('<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01"/><path d="M6 18h.01"/>'),
   folder: svg('<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>'),
+  settings: svg('<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>'),
   eye: svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>')
 }
 
@@ -332,6 +333,24 @@ function ticketRow(ticket, columns) {
 
 /* Panes */
 
+const THEMES = [
+  { id: 'default', label: 'Atelier', swatches: ['#212337', '#282a42', '#9b90f4', '#8acfef', '#13be76', '#e8c59b', '#f97171'] },
+  { id: 'nord', label: 'Nord', swatches: ['#2e3440', '#3b4252', '#81a1c1', '#88c0d0', '#a3be8c', '#ebcb8b', '#bf616a'] }
+]
+
+function renderSettings() {
+  const current = document.documentElement.dataset.theme || 'default'
+  $('settings').innerHTML = `<h2 id="settings-title">Settings</h2>
+    <h3>Theme</h3>
+    <div class="themes" role="radiogroup" aria-label="Theme">${THEMES.map(theme => `
+      <button class="theme-option" role="radio" aria-checked="${theme.id === current}" data-act="set-theme" data-theme="${theme.id}">
+        <span class="swatches" aria-hidden="true">${theme.swatches.map(color => `<i style="background: ${color}"></i>`).join('')}</span>
+        <span class="t">${esc(theme.label)}</span>
+      </button>`).join('')}
+    </div>`
+}
+
+
 const ticketsIn = (state, stage) => state.tickets.filter(t => t.stage === stage)
 
 function ticketList(tickets, columns) {
@@ -369,7 +388,8 @@ const NAV = [
   { tab: 'mep', label: 'À MEP', glyph: 'rocket', sub: true },
   { tab: 'unassigned', label: 'Unassigned', glyph: 'userPlus', sub: true },
   { tab: 'qualifs', label: 'Qualifs', glyph: 'server' },
-  { tab: 'reviews', label: 'To review', glyph: 'eye' }
+  { tab: 'reviews', label: 'To review', glyph: 'eye' },
+  { tab: 'settings', label: 'Settings', glyph: 'settings' }
 ]
 
 function navCount(state, tab) {
@@ -377,6 +397,7 @@ function navCount(state, tab) {
   if (tab === 'unassigned') return state.unassigned.length
   if (tab === 'qualifs') return state.qualifs.items.length
   if (tab === 'reviews') return state.reviews.filter(pr => pr.group === 'waiting').length
+  if (tab === 'settings') return 0
   return ticketsIn(state, tab).length
 }
 
@@ -735,6 +756,7 @@ function render() {
   renderUnassigned(state)
   if (!(active?.tagName === 'SELECT' && active.closest('#qualifs'))) renderQualifs(state)
   renderReviews(state)
+  renderSettings()
   renderLaunch(state)
   renderNav()
 
@@ -887,6 +909,14 @@ const handlers = {
   'qualif-unassign': el => act('qualifUnassign', { number: Number(el.dataset.number), key: el.dataset.key }),
   'qualif-remove': el => act('qualifRemove', { number: Number(el.dataset.number) }),
   'timer-start': el => act('timerStart', { key: el.dataset.key }),
+  async 'set-theme'(el) {
+    const theme = el.dataset.theme
+    const result = await act('setTheme', { theme })
+    if (!result?.ok) return
+    document.documentElement.dataset.theme = theme === 'default' ? '' : theme
+    applyTerminalTheme()
+    renderSettings()
+  },
   'timer-stop': () => act('timerStop'),
   'timer-discard': el => {
     delete ui.drafts[el.dataset.key]
@@ -963,7 +993,7 @@ document.addEventListener('keydown', event => {
   else if (TABS[Number(event.key) - 1]) setTab(TABS[Number(event.key) - 1])
 })
 
-const TABS = ['mine', 'mepp', 'mep', 'unassigned', 'qualifs', 'reviews']
+const TABS = ['mine', 'mepp', 'mep', 'unassigned', 'qualifs', 'reviews', 'settings']
 const MINE_FILTERS = ['mepp', 'mep', 'unassigned']
 
 function setTab(tab) {

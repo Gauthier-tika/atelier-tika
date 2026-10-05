@@ -38,16 +38,34 @@ const defaults = {
   theme: null
 }
 
-function load() {
-  const file = path.join(home, '.config/atelier/config.json')
-  let user = {}
+const file = path.join(home, '.config/atelier/config.json')
+
+function readUser() {
   try {
-    user = JSON.parse(fs.readFileSync(file, 'utf8'))
-  } catch {}
+    return JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch {
+    return {}
+  }
+}
+
+function load() {
+  const user = readUser()
   const config = { ...defaults, ...user, columnLabels: { ...defaults.columnLabels, ...user.columnLabels } }
   for (const key of ['jiraEnv', 'jiraTimeBin', 'devDir', 'repoDir', 'claudeSessionsBin', 'qualifSyncBin'])
     config[key] = expand(config[key])
   return config
 }
 
-module.exports = { load, home, expand }
+// Sets (or, with null, removes) top-level keys in the user's config.json, leaving the others as written.
+function save(changes) {
+  const user = readUser()
+  for (const [key, value] of Object.entries(changes)) {
+    if (value === null) delete user[key]
+    else user[key] = value
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(file + '.tmp', JSON.stringify(user, null, 2) + '\n')
+  fs.renameSync(file + '.tmp', file)
+}
+
+module.exports = { load, save, home, expand }
