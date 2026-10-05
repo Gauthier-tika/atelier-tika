@@ -92,6 +92,8 @@ Defaults live in `src/config.js`. Override any of them in `~/.config/atelier/con
 
 `npm run shot:demo` regenerates `demo/screenshot.png` from the made-up tickets, PRs and sessions in `demo/shot.js`, without calling Jira or GitHub.
 
+Pick a theme under **Settings**, Atelier or [Nord](https://www.nordtheme.com). It applies to the app and its terminals at once, and is saved as `"theme"` in `~/.config/atelier/config.json`.
+
 ## Terminal shortcuts
 
 | Keys | Action |

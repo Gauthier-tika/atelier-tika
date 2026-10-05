@@ -1,4 +1,4 @@
-const terminalTheme = {
+const defaultTerminalTheme = {
   background: '#212337',
   foreground: '#cccee1',
   cursor: '#cccee1',
@@ -21,6 +21,37 @@ const terminalTheme = {
   brightMagenta: '#eb94b2',
   brightCyan: '#8acfef',
   brightWhite: '#d9dae8'
+}
+
+const nordTerminalTheme = {
+  background: '#2e3440',
+  foreground: '#d8dee9',
+  cursor: '#d8dee9',
+  cursorAccent: '#2e3440',
+  selectionBackground: '#4c566a',
+  selectionForeground: '#eceff4',
+  black: '#3b4252',
+  red: '#bf616a',
+  green: '#a3be8c',
+  yellow: '#ebcb8b',
+  blue: '#81a1c1',
+  magenta: '#b48ead',
+  cyan: '#88c0d0',
+  white: '#e5e9f0',
+  brightBlack: '#4c566a',
+  brightRed: '#bf616a',
+  brightGreen: '#a3be8c',
+  brightYellow: '#ebcb8b',
+  brightBlue: '#81a1c1',
+  brightMagenta: '#b48ead',
+  brightCyan: '#8fbcbb',
+  brightWhite: '#eceff4'
+}
+
+const terminalTheme = () => document.documentElement.dataset.theme === 'nord' ? nordTerminalTheme : defaultTerminalTheme
+
+function applyTerminalTheme() {
+  for (const pane of view.panes.values()) pane.term.options.theme = terminalTheme()
 }
 
 const DEFAULT_FONT_SIZE = 12
@@ -62,7 +93,7 @@ function ensurePane(id) {
     scrollback: 10000,
     allowProposedApi: true,
     macOptionIsMeta: true,
-    theme: terminalTheme
+    theme: terminalTheme()
   })
   const fit = new FitAddon.FitAddon()
   term.loadAddon(fit)
