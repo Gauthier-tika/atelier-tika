@@ -34,7 +34,8 @@ const defaults = {
   claudeCommand: 'claude',
   startPrompt: '/jira {key}',
   reviewPrompt: '/review {number}',
-  pollSeconds: 120
+  pollSeconds: 120,
+  theme: null
 }
 
 function load() {

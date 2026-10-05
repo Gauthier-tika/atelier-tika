@@ -457,7 +457,7 @@ function createWindow() {
     minHeight: 420,
     show: !shotPath,
     frame: false,
-    backgroundColor: '#212337',
+    backgroundColor: config.theme === 'nord' ? '#2e3440' : '#212337',
     title: 'Atelier',
     autoHideMenuBar: true,
     webPreferences: {
@@ -493,7 +493,7 @@ function createWindow() {
     if (choice === 1) event.preventDefault()
     else terminals.killAll()
   })
-  win.loadFile(path.join(__dirname, 'renderer/index.html'))
+  win.loadFile(path.join(__dirname, 'renderer/index.html'), { query: config.theme ? { theme: config.theme } : {} })
 
   let lastFocusRefresh = Date.now()
   win.on('focus', () => {

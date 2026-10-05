@@ -44,6 +44,28 @@
   color-scheme: dark;
 }
 
+/* Nord (nordtheme.com), picked with "theme": "nord" in ~/.config/atelier/config.json */
+:root[data-theme="nord"] {
+  --sidebar: #272c36;
+  --bg: #2e3440;
+  --band: #323845;
+  --raised: #363d4a;
+  --hover: #3b4252;
+  --line: #434c5e;
+  --surface: #434c5e;
+  --selection: #4c566a;
+  --muted: #616e88;
+  --comment: #7b88a1;
+  --fg: #d8dee9;
+  --bright: #eceff4;
+  --purple: #81a1c1;
+  --cyan: #88c0d0;
+  --green: #a3be8c;
+  --sand: #ebcb8b;
+  --orange: #d08770;
+  --red: #bf616a;
+}
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -398,8 +420,8 @@ button {
 }
 
 @keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgb(155 144 244 / 0.55); }
-  50% { box-shadow: 0 0 0 6px rgb(155 144 244 / 0); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--purple) 55%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--purple) 0%, transparent); }
 }
 
 .clock .elapsed {
@@ -567,7 +589,7 @@ button {
   padding: 10px 14px;
   border-left: 3px solid var(--red);
   border-radius: 0 6px 6px 0;
-  background: rgb(249 113 113 / 0.07);
+  background: color-mix(in srgb, var(--red) 7%, transparent);
   color: var(--fg);
   max-width: 75ch;
 }
@@ -701,7 +723,7 @@ button {
   transition: height 120ms ease, background 120ms ease;
 }
 
-.track .stop.passed i { background: rgb(138 207 239 / 0.45); }
+.track .stop.passed i { background: color-mix(in srgb, var(--cyan) 45%, transparent); }
 .track .stop.here i { background: var(--cyan); height: 10px; }
 .track .stop:hover i { height: 10px; background: var(--comment); }
 .track .stop.here:hover i { background: var(--cyan); }
@@ -709,7 +731,7 @@ button {
 
 .blocked .track .stop.passed i,
 .blocked .track .stop.here i {
-  background: repeating-linear-gradient(135deg, var(--red) 0 3px, rgb(249 113 113 / 0.35) 3px 6px);
+  background: repeating-linear-gradient(135deg, var(--red) 0 3px, color-mix(in srgb, var(--red) 35%, transparent) 3px 6px);
 }
 
 .track.off-board .stop i { background: var(--surface); }
@@ -889,7 +911,7 @@ button {
 
 .qualif .pick { justify-self: start; }
 
-.qualif.running { background: rgb(155 144 244 / 0.05); }
+.qualif.running { background: color-mix(in srgb, var(--purple) 5%, transparent); }
 
 .qualif-head {
   display: flex;
@@ -1269,7 +1291,7 @@ body:not([data-view="list"]) .panes { display: none; }
   position: absolute;
   z-index: 20;
   inset: 0;
-  background: rgb(33 35 55 / 0.28);
+  background: color-mix(in srgb, var(--bg) 28%, transparent);
   pointer-events: none;
 }
 
