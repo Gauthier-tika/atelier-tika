@@ -4,6 +4,8 @@ An Electron desktop app that puts my day-to-day Tikamoon work in one window: Jir
 
 It is built for one setup (Linux with Hyprland, Ghostty and Sapling) and is not meant as a general-purpose tool.
 
+![Atelier with demo data](demo/screenshot.png)
+
 ## What it does
 
 - **Tickets**: my board, the MEPP and MEP columns and unassigned tickets from Jira. Move a ticket between columns, flag it, take an unassigned one, log time against it with a timer.
@@ -70,6 +72,8 @@ Defaults live in `src/config.js`. Override any of them in `~/.config/atelier/con
 | `ATELIER_WIDTH`, `ATELIER_HEIGHT` | Initial window size |
 | `ATELIER_SHOT` | Save a screenshot to this path (`npm run shot`) |
 | `ATELIER_SHOT_TAB`, `ATELIER_SHOT_SESSION` | Tab or session to show in that screenshot |
+
+`npm run shot:demo` regenerates `demo/screenshot.png` from the made-up tickets, PRs and sessions in `demo/shot.js`, without calling Jira or GitHub.
 
 ## Terminal shortcuts
 
