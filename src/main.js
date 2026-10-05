@@ -5,6 +5,7 @@ const { Jira } = require('./jira')
 const github = require('./github')
 const claude = require('./claude')
 const launch = require('./launch')
+const wm = require('./wm')
 const { Timer } = require('./timer')
 const { compose, qualifPrs } = require('./compose')
 const { Qualifs } = require('./qualifs')
@@ -395,10 +396,9 @@ async function tagWindow(asTerminal) {
   if (shotPath || tagged === asTerminal) return
   tagged = asTerminal
   try {
-    const clients = JSON.parse(await run('hyprctl', ['clients', '-j'], { timeout: 3000 }))
-    const own = clients.find(c => c.pid === process.pid)
+    const own = (await wm.clients()).find(c => c.pid === process.pid)
     if (!own) return
-    await run('hyprctl', ['dispatch', `hl.dsp.window.tag({ tag = "${asTerminal ? '+' : '-'}terminal", window = "address:${own.address}" })`], { timeout: 3000 })
+    await wm.tag(own.address, asTerminal)
   } catch {
     tagged = null
   }
