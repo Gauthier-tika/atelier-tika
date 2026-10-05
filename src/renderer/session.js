@@ -475,9 +475,12 @@ function showList() {
   row?.focus()
 }
 
+const isEditor = t => t.id.startsWith('editor:')
+const editorPaneOpen = (state, t) => state.terminals.some(x => x.id === `${t.id}~editor` && !x.exited)
+
 function sessionStatus(terminal) {
   if (terminal.exited) return ['', 'Ended']
-  if (terminal.kind === 'terminal') return ['idle', terminal.id.startsWith('nvim:') ? 'nvim' : 'Shell']
+  if (terminal.kind === 'terminal') return ['idle', isEditor(terminal) ? ui.state.editor.name : 'Shell']
   const s = terminal.session
   if (!s) return ['purple', 'Starting']
   return {
@@ -491,13 +494,14 @@ function sessionStatus(terminal) {
 function sessionName(t) {
   if (t.key) return `${t.key}${t.id.startsWith('rebase:') ? ' rebase' : ''}`
   if (t.prId) return (t.label.match(/#\d+/) || ['Review'])[0]
-  return t.label.replace(/^(Claude|Terminal|nvim) in /, '')
+  if (isEditor(t)) return t.id.replace(/^editor:/, '')
+  return t.label.replace(/^(Claude|Terminal) in /, '')
 }
 
 function sessionDetail(t) {
   if (t.prId) return t.label.replace(/^Review of [^:]+: /, '')
   if (t.key) return t.label
-  if (t.id.startsWith('nvim:')) return 'nvim'
+  if (isEditor(t)) return ui.state.editor.name
   if (t.kind === 'terminal') return 'Terminal'
   return t.session?.title || t.session?.prompt || 'Claude'
 }
@@ -509,7 +513,7 @@ function renderNavSessions() {
     <div class="session-list">${sessions.map(t => {
       const [color, label] = sessionStatus(t)
       const current = inSession && t.id === view.active
-      const mark = t.kind === 'claude' ? '<span class="dot"></span>' : `<span class="glyph">${t.id.startsWith('nvim:') ? G.edit : G.terminal}</span>`
+      const mark = t.kind === 'claude' ? '<span class="dot"></span>' : `<span class="glyph">${isEditor(t) ? G.edit : G.terminal}</span>`
       return `<button class="${color}" data-act="open-session" data-id="${esc(t.id)}" aria-current="${current ? 'page' : 'false'}" title="${esc(`${t.label} (${label})`)}">
         ${mark}<span class="name code">${esc(sessionName(t))}</span><span class="state">${t.kind === 'claude' || t.exited ? esc(label) : ''}</span><span class="detail">${esc(sessionDetail(t))}</span></button>`
     }).join('')}</div>` : ''
@@ -528,14 +532,13 @@ function sessionMenu(t) {
   const pr = t.prId ? state.reviews.find(r => r.id === t.prId) : ticket?.pr
   const shell = t.kind === 'terminal'
   const current = document.body.dataset.view === 'session' && view.active === t.id
-  const nvimOpen = state.terminals.some(x => x.id === `${t.id}~nvim` && !x.exited)
   const claudeId = t.session?.id
   return [
     !current && { label: shell ? 'Open terminal' : 'Open session', run: () => openSession(t.id) },
     ticket && { label: `Open ${t.key} in Jira`, run: () => act('openUrl', { url: ticket.url }) },
     pr && { label: `Open #${pr.number} on GitHub`, run: () => act('openUrl', { url: pr.url }) },
     '-',
-    t.kind === 'claude' && !t.exited && !nvimOpen && { label: 'Open nvim beside Claude', run: () => {
+    t.kind === 'claude' && !t.exited && !editorPaneOpen(state, t) && { label: editorAction(state, t).menu, run: () => {
       openSession(t.id)
       handlers['open-editor']({ dataset: { id: t.id } })
     } },
@@ -570,10 +573,17 @@ document.addEventListener('contextmenu', event => {
   showMenu(sessionMenu(terminal))
 })
 
+function editorAction(state, terminal) {
+  const { name, mode } = state.editor
+  return mode === 'window'
+    ? { menu: `Open in ${name}`, button: `Open in ${name}`, title: `Open ${terminal.cwd} in ${name}` }
+    : { menu: `Open ${name} beside Claude`, button: `Open ${name}`, title: `Open ${name} beside Claude, in ${terminal.cwd}` }
+}
+
 function editorButton(state, terminal) {
-  if (terminal.kind !== 'claude' || terminal.exited) return ''
-  if (state.terminals.some(t => t.id === `${terminal.id}~nvim` && !t.exited)) return ''
-  return `<button class="btn quiet" data-act="open-editor" data-id="${esc(terminal.id)}" title="Open nvim beside Claude, in ${esc(terminal.cwd)}"><span class="glyph">${G.edit}</span><span class="t">Open nvim</span></button>`
+  if (terminal.kind !== 'claude' || terminal.exited || editorPaneOpen(state, terminal)) return ''
+  const { button, title } = editorAction(state, terminal)
+  return `<button class="btn quiet" data-act="open-editor" data-id="${esc(terminal.id)}" title="${esc(title)}"><span class="glyph">${G.edit}</span><span class="t">${esc(button)}</span></button>`
 }
 
 function endButton(terminal) {
@@ -682,7 +692,7 @@ function syncTerminals() {
     }
     if (!findParent(tree, t.id)) {
       const leaf = { t: 'leaf', id: t.id }
-      view.layouts.set(t.parent, t.id === `${t.parent}~nvim`
+      view.layouts.set(t.parent, t.id === `${t.parent}~editor`
         ? { t: 'split', dir: 'row', ratio: 0.72, a: leaf, b: tree }
         : { t: 'split', dir: 'row', ratio: 0.6, a: tree, b: leaf })
       layout(t.parent)
@@ -716,7 +726,7 @@ Object.assign(handlers, {
   async 'open-editor'(el) {
     const sid = el.dataset.id
     const result = await act('openEditor', { parent: sid })
-    if (!result?.ok) return
+    if (!result?.ok || !result.pane) return
     const tree = view.layouts.get(sid)
     if (tree && findParent(tree, result.pane)) focusPane(result.pane)
     else view.pendingFocus = result.pane

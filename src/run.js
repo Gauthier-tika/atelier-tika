@@ -1,4 +1,5 @@
 const { execFile, spawn } = require('node:child_process')
+const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 
@@ -27,10 +28,22 @@ function run(command, args, options = {}) {
   })
 }
 
-function detach(command, args, extraEnv = {}) {
-  const child = spawn(command, args, { env: { ...env, ...extraEnv }, detached: true, stdio: 'ignore' })
+function detach(command, args, options = {}) {
+  const child = spawn(command, args, { env, detached: true, stdio: 'ignore', ...options })
   child.on('error', () => {})
   child.unref()
+  return child
 }
 
-module.exports = { run, detach, env }
+function executable(file) {
+  try {
+    fs.accessSync(file, fs.constants.X_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
+const onPath = command => command.includes('/') ? executable(command) : env.PATH.split(':').some(dir => executable(path.join(dir, command)))
+
+module.exports = { run, detach, env, onPath }

@@ -2,6 +2,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const { run, detach } = require('./run')
+const { editorArgs } = require('./config')
 const wm = require('./wm')
 
 const quote = value => `'${String(value).replace(/'/g, `'\\''`)}'`
@@ -47,4 +48,13 @@ function terminal(directory, claudeArgs) {
   return 'terminal'
 }
 
-module.exports = { openUrl, terminal, directoryFor }
+async function editorWindow(editor, directory) {
+  const child = detach(editor.command, editorArgs(editor, directory), { cwd: directory })
+  await new Promise((resolve, reject) => {
+    child.once('spawn', resolve)
+    child.once('error', error => reject(new Error(`Could not start ${editor.name}: ${error.message}`)))
+  })
+  return `Opened ${path.basename(directory)} in ${editor.name}`
+}
+
+module.exports = { openUrl, terminal, directoryFor, editorWindow }

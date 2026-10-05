@@ -10,16 +10,16 @@ It is built for one setup (Linux with Hyprland, Ghostty and Sapling) and is not 
 
 - **Tickets**: my board, the MEPP and MEP columns and unassigned tickets from Jira. Move a ticket between columns, flag it, take an unassigned one, log time against it with a timer.
 - **Claude sessions**: start or resume a Claude Code session on a ticket in an embedded terminal. Sessions already running in Ghostty are shown too, and Atelier switches to their window.
-- **Splits**: Ghostty-style panes inside a session. **Open nvim** puts nvim on the left of Claude, and extra shells split beside it. A pane closes when its program exits.
+- **Splits**: Ghostty-style panes inside a session. **Open nvim** puts nvim, or the [editor](#editor) you set, on the left of Claude, and extra shells split beside it. A pane closes when its program exits.
 - **PRs and reviews**: GitHub PRs and their checks, rebase a ticket's PR, start a Claude review of a PR.
 - **Qualifs**: which qualif environment holds which ticket, sync the Jira Qualif field, clear a qualif's caches.
-- **Repo tools**: open Claude, a shell or nvim in any repo under `~/Dev` (`devDir`), and `sl web` when Sapling is installed.
+- **Repo tools**: open Claude, a shell or your editor in any repo under `~/Dev` (`devDir`), and `sl web` when Sapling is installed.
 
 ## Requirements
 
 - Node.js and npm
 - `claude` (Claude Code), `gh` (signed in), `git`, `python3`, `bash` 4 or later
-- `nvim`
+- An editor: `nvim` by default, any other through `editor` (see [Editor](#editor))
 - `kubectl` with access to the qualif cluster, for the qualif actions
 - Optional: `sl` (Sapling), for `sl web`; without it Atelier uses git
 - Optional, to focus and open windows: `hyprctl`, `ghostty` and `uwsm-app` on Hyprland, or `swaymsg` and `alacritty` on Sway
@@ -93,6 +93,24 @@ Defaults live in `src/config.js`. Override any of them in `~/.config/atelier/con
 `npm run shot:demo` regenerates `demo/screenshot.png` from the made-up tickets, PRs and sessions in `demo/shot.js`, without calling Jira or GitHub.
 
 Pick a theme under **Settings**, Atelier or [Nord](https://www.nordtheme.com). It applies to the app and its terminals at once, and is saved as `"theme"` in `~/.config/atelier/config.json`.
+
+### Editor
+
+Pick the editor behind the **Open nvim** and **nvim** buttons under **Settings**: nvim, Vim, Helix, PhpStorm, VS Code or Zed. The buttons take its name, and the choice is saved as `"editor"` in `~/.config/atelier/config.json`.
+
+Any other editor goes in that file. `{dir}` in `args` becomes the session or repo directory, which is also the editor's working directory. A terminal editor runs in a pane (`"mode": "pane"`, the default):
+
+```json
+{ "editor": { "command": "hx", "args": ["."] } }
+```
+
+A graphical editor opens in its own window (`"mode": "window"`), and the session button becomes **Open in PhpStorm**:
+
+```json
+{ "editor": { "name": "PhpStorm", "command": "phpstorm", "args": ["{dir}"], "mode": "window" } }
+```
+
+`name` defaults to the command's file name.
 
 ## Terminal shortcuts
 

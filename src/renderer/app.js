@@ -339,7 +339,7 @@ const THEMES = [
   { id: 'nord', label: 'Nord', swatches: ['#2e3440', '#3b4252', '#81a1c1', '#88c0d0', '#a3be8c', '#ebcb8b', '#bf616a'] }
 ]
 
-function renderSettings() {
+function renderSettings(state) {
   const current = document.documentElement.dataset.theme || 'default'
   $('settings').innerHTML = `<h2 id="settings-title">Settings</h2>
     <h3>Theme</h3>
@@ -347,6 +347,15 @@ function renderSettings() {
       <button class="theme-option" role="radio" aria-checked="${theme.id === current}" data-act="set-theme" data-theme="${theme.id}">
         <span class="swatches" aria-hidden="true">${theme.swatches.map(color => `<i style="background: ${color}"></i>`).join('')}</span>
         <span class="t">${esc(theme.label)}</span>
+      </button>`).join('')}
+    </div>
+    <h3>Editor</h3>
+    <div class="editors" role="radiogroup" aria-label="Editor">${state.editors.map(editor => `
+      <button class="editor-option" role="radio" aria-checked="${editor.current}" data-act="set-editor" data-command="${esc(editor.command)}">
+        <span class="t">${esc(editor.name)}</span>
+        <span class="hint">${editor.mode === 'window' ? 'Opens its own window' : 'Opens in a pane beside Claude'}</span>
+        ${editor.custom ? '<span class="hint">Set in config.json</span>' : ''}
+        ${editor.found ? '' : `<span class="hint missing">${esc(editor.command)} not found</span>`}
       </button>`).join('')}
     </div>`
 }
@@ -371,14 +380,14 @@ function renderLaunch(state) {
   const repo = state.repos.includes(ui.repo) ? ui.repo : state.repos[0]
   const starting = ui.busy.has('sl-web')
   $('launch').innerHTML = `
-    <label class="repo" for="repo-pick" title="Where new sessions, terminals and nvim open">
+    <label class="repo" for="repo-pick" title="Where new sessions, terminals and ${esc(state.editor.name)} open">
       <span class="glyph">${G.folder}</span>
       <select id="repo-pick" data-pick="repo">${state.repos.map(name => `<option ${name === repo ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select>
     </label>
     <button class="btn primary launch-claude" data-act="claude-repo" title="Start a Claude session with no ticket in ${esc(repo)}"><span class="glyph claude">${G.claude}</span><span class="t">New Claude session</span></button>
     <div class="launch-tools">
       <button class="tool" data-act="shell-repo" title="Open a plain terminal, without Claude, in ${esc(repo)}"><span class="glyph">${G.terminal}</span><span class="t">Terminal</span></button>
-      <button class="tool" data-act="nvim-repo" title="Open nvim in ${esc(repo)}"><span class="glyph">${G.edit}</span><span class="t">nvim</span></button>
+      <button class="tool" data-act="editor-repo" title="Open ${esc(state.editor.name)} in ${esc(repo)}"><span class="glyph">${G.edit}</span><span class="t">${esc(state.editor.name)}</span></button>
       ${state.sapling ? `<button class="tool" data-act="sl-web" title="Show Sapling Web (sl web) on ${esc(repo)} inside Atelier" ${starting ? 'disabled' : ''}><span class="glyph">${G.smartlog}</span><span class="t">${starting ? 'Starting…' : 'sl web'}</span></button>` : ''}
     </div>`
 }
@@ -757,7 +766,7 @@ function render() {
   renderUnassigned(state)
   if (!(active?.tagName === 'SELECT' && active.closest('#qualifs'))) renderQualifs(state)
   renderReviews(state)
-  renderSettings()
+  renderSettings(state)
   renderLaunch(state)
   renderNav()
 
@@ -826,7 +835,7 @@ const handlers = {
   'claude-repo': () => act('claudeRepo', { name: pickedRepo() }),
   'shell-repo': () => act('shellRepo', { name: pickedRepo() }),
   'sl-web': () => act('slWeb', { name: pickedRepo() }, 'sl-web'),
-  'nvim-repo': () => act('nvimRepo', { name: pickedRepo() }),
+  'editor-repo': () => act('editorRepo', { name: pickedRepo() }),
   'close-web': () => closeWeb(),
   'reload-web': () => {
     const frame = web.frames.get(web.active)
@@ -916,7 +925,10 @@ const handlers = {
     if (!result?.ok) return
     document.documentElement.dataset.theme = theme === 'default' ? '' : theme
     applyTerminalTheme()
-    renderSettings()
+    renderSettings(ui.state)
+  },
+  'set-editor': el => {
+    if (el.getAttribute('aria-checked') !== 'true') act('setEditor', { command: el.dataset.command })
   },
   'timer-stop': () => act('timerStop'),
   'timer-discard': el => {

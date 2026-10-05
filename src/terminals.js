@@ -1,13 +1,15 @@
 const pty = require('@lydell/node-pty')
 const { env } = require('./run')
+const { editorArgs } = require('./config')
 
 const SCROLLBACK_BYTES = 2 * 1024 * 1024
 const quote = value => `'${String(value).replace(/'/g, `'\\''`)}'`
 
 class Terminals {
-  constructor(send, claudeCommand = 'claude') {
+  constructor(send, claudeCommand, editor) {
     this.send = send
     this.claudeCommand = claudeCommand
+    this.editor = editor
     this.items = new Map()
     this.pending = new Map()
     this.flushTimer = null
@@ -108,7 +110,7 @@ class Terminals {
   spawnEditor(parent) {
     const owner = this.items.get(parent)
     if (!owner) throw new Error('That session is gone')
-    return this.spawn(`${parent}~nvim`, { cwd: owner.cwd, kind: 'shell', parent, label: 'nvim', command: 'nvim', args: ['.'] })
+    return this.spawn(`${parent}~editor`, { cwd: owner.cwd, kind: 'shell', parent, label: this.editor.name, command: this.editor.command, args: editorArgs(this.editor, owner.cwd) })
   }
 
   killAll() {

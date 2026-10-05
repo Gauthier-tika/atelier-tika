@@ -1399,14 +1399,14 @@ body:not([data-view="list"]) .panes { display: none; }
 
 /* Settings */
 
-.themes {
+.themes, .editors {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   padding: 16px var(--gutter);
 }
 
-.theme-option {
+.theme-option, .editor-option {
   display: grid;
   gap: 10px;
   padding: 12px;
@@ -1419,9 +1419,13 @@ body:not([data-view="list"]) .panes { display: none; }
   cursor: pointer;
 }
 
-.theme-option:hover { background: var(--hover); }
-.theme-option[aria-checked="true"] { border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan); }
-.theme-option[aria-checked="true"] .t { color: var(--bright); }
+.theme-option:hover, .editor-option:hover { background: var(--hover); }
+.theme-option[aria-checked="true"], .editor-option[aria-checked="true"] { border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan); }
+.theme-option[aria-checked="true"] .t, .editor-option[aria-checked="true"] .t { color: var(--bright); }
+
+.editor-option { gap: 4px; min-width: 180px; align-content: start; }
+.editor-option .hint { color: var(--comment); font-size: var(--step--1); }
+.editor-option .hint.missing { color: var(--sand); }
 
 .theme-option .swatches { display: flex; gap: 4px; }
 .theme-option .swatches i { width: 20px; height: 20px; border-radius: 4px; border: 1px solid color-mix(in srgb, var(--bright) 15%, transparent); }

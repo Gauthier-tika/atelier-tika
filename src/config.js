@@ -34,11 +34,21 @@ const defaults = {
   claudeSessionsBin: bundled('claude-sessions'),
   qualifSyncBin: bundled('qualif-sync'),
   claudeCommand: 'claude',
+  editor: { command: 'nvim', args: ['.'], mode: 'pane' },
   startPrompt: '/jira {key}',
   reviewPrompt: '/review {number}',
   pollSeconds: 120,
   theme: null
 }
+
+const editors = [
+  { name: 'nvim', command: 'nvim', args: ['.'], mode: 'pane' },
+  { name: 'Vim', command: 'vim', args: ['.'], mode: 'pane' },
+  { name: 'Helix', command: 'hx', args: ['.'], mode: 'pane' },
+  { name: 'PhpStorm', command: 'phpstorm', args: ['{dir}'], mode: 'window' },
+  { name: 'VS Code', command: 'code', args: ['{dir}'], mode: 'window' },
+  { name: 'Zed', command: 'zed', args: ['{dir}'], mode: 'window' }
+]
 
 const file = path.join(home, '.config/atelier/config.json')
 
@@ -55,6 +65,9 @@ function load() {
   const config = { ...defaults, ...user, columnLabels: { ...defaults.columnLabels, ...user.columnLabels } }
   for (const key of ['jiraEnv', 'jiraTimeBin', 'devDir', 'repoDir', 'claudeSessionsBin', 'qualifSyncBin'])
     config[key] = expand(config[key])
+  config.editor = { ...defaults.editor, ...user.editor }
+  config.editor.command = expand(config.editor.command)
+  config.editor.name ||= path.basename(config.editor.command)
   return config
 }
 
@@ -70,4 +83,6 @@ function save(changes) {
   fs.renameSync(file + '.tmp', file)
 }
 
-module.exports = { load, save, home, expand }
+const editorArgs = (editor, directory) => editor.args.map(arg => arg.replaceAll('{dir}', directory))
+
+module.exports = { load, save, home, expand, editors, editorArgs }

@@ -9,7 +9,7 @@ const wm = require('./wm')
 const { Timer } = require('./timer')
 const { compose, qualifPrs } = require('./compose')
 const { Qualifs } = require('./qualifs')
-const { run } = require('./run')
+const { run, onPath } = require('./run')
 const rebase = require('./rebase')
 const sapling = require('./sapling')
 const { Terminals } = require('./terminals')
@@ -41,7 +41,7 @@ let win = null
 const send = (channel, ...args) => {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
 }
-const terminals = new Terminals(send, process.env.ATELIER_CLAUDE_BIN || config.claudeCommand)
+const terminals = new Terminals(send, process.env.ATELIER_CLAUDE_BIN || config.claudeCommand, config.editor)
 terminals.onChange = () => refreshClaude()
 
 let pushTimer = null
@@ -70,7 +70,7 @@ function repoNamed(name) {
   return repo
 }
 
-const current = () => ({ ...compose({ ...data, qualifs: qualifs.list() }, timer.state, config, terminals.list()), repos: repos().map(r => r.name), sapling: data.sapling })
+const current = () => ({ ...compose({ ...data, qualifs: qualifs.list() }, timer.state, config, terminals.list()), repos: repos().map(r => r.name), sapling: data.sapling, editor: { name: config.editor.name, mode: config.editor.mode }, editors: editorChoices() })
 
 const qualifBranches = () => data.github ? qualifs.list().map(q => `qualif-${data.github.viewer}-${q.number}`) : []
 
@@ -137,10 +137,21 @@ function refreshBar() {
 
 const tickets = () => data.tickets || []
 
-function openNvim(id, cwd, label) {
+const editorWindow = () => config.editor.mode === 'window'
+
+const installed = new Map()
+function editorChoices() {
+  const known = configModule.editors.some(e => e.command === config.editor.command)
+  return [...configModule.editors, ...(known ? [] : [{ ...config.editor, custom: true }])].map(({ name, command, mode, custom = false }) => {
+    if (!installed.has(command)) installed.set(command, onPath(command))
+    return { name, command, mode, custom, found: installed.get(command), current: command === config.editor.command }
+  })
+}
+
+function openEditorView(id, cwd, label) {
   const existing = terminals.get(id)
   if (existing?.exited) terminals.close(id)
-  terminals.spawn(id, { label, cwd, kind: 'terminal', command: 'nvim', args: ['.'] })
+  terminals.spawn(id, { label, cwd, kind: 'terminal', command: config.editor.command, args: configModule.editorArgs(config.editor, cwd) })
   return id
 }
 const ticket = key => tickets().find(t => t.key === key)
@@ -155,6 +166,15 @@ const actions = {
     config.theme = theme === 'default' ? null : theme
     configModule.save({ theme: config.theme })
     win.setBackgroundColor(THEMES[theme])
+  },
+
+  setEditor({ command }) {
+    const editor = configModule.editors.find(e => e.command === command)
+    if (!editor) throw new Error(`Unknown editor ${command}`)
+    configModule.save({ editor: editor === configModule.editors[0] ? null : editor })
+    config.editor = { ...editor }
+    terminals.editor = config.editor
+    push()
   },
 
   async claudeOpen({ key, fresh }) {
@@ -260,9 +280,10 @@ const actions = {
     return { web: { url: server.url, repo: repo.name } }
   },
 
-  nvimRepo({ name }) {
+  editorRepo({ name }) {
     const repo = repoNamed(name)
-    return { view: openNvim(`nvim:${repo.name}`, repo.dir, `nvim in ${repo.name}`) }
+    if (editorWindow()) return launch.editorWindow(config.editor, repo.dir)
+    return { view: openEditorView(`editor:${repo.name}`, repo.dir, `${config.editor.name} in ${repo.name}`) }
   },
 
 
@@ -312,7 +333,10 @@ const actions = {
   },
 
   openEditor({ parent }) {
-    return { pane: terminals.spawnEditor(parent).id }
+    if (!editorWindow()) return { pane: terminals.spawnEditor(parent).id }
+    const owner = terminals.get(parent)
+    if (!owner) throw new Error('That session is gone')
+    return launch.editorWindow(config.editor, owner.cwd)
   },
 
   async move({ key, station }) {
