@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https://avatars.githubusercontent.com; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; frame-src http://localhost:*">
+  <title>Atelier</title>
+  <link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-view="list">
+  <aside class="sidebar" aria-label="Atelier">
+    <div class="brand">Atelier</div>
+    <nav class="nav" id="tabs" aria-label="Sections" data-tab="mine"></nav>
+    <div class="nav-sessions" id="nav-sessions"></div>
+    <div class="launch" id="launch"></div>
+  </aside>
+  <header class="topbar">
+    <div class="today" id="today"></div>
+    <div class="clock" id="clock"></div>
+    <div class="sync" id="sync"></div>
+  </header>
+  <main class="panes" id="panes" data-tab="mine">
+    <section class="pane" id="mine" aria-labelledby="mine-title"></section>
+    <section class="pane" id="mepp" aria-labelledby="mepp-title"></section>
+    <section class="pane" id="mep" aria-labelledby="mep-title"></section>
+    <section class="pane" id="unassigned" aria-labelledby="unassigned-title"></section>
+    <section class="pane" id="qualifs" aria-labelledby="qualifs-title"></section>
+    <section class="pane" id="reviews" aria-labelledby="reviews-title"></section>
+  </main>
+  <section class="session-view" id="session" hidden>
+    <div class="session-bar" id="session-bar"></div>
+    <div class="terms" id="terms"></div>
+    <div class="ended" id="ended" hidden></div>
+  </section>
+  <section class="web-view" id="web" hidden>
+    <div class="web-bar" id="web-bar"></div>
+    <div class="web-frames" id="web-frames"></div>
+  </section>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="../../node_modules/@xterm/xterm/lib/xterm.js"></script>
+  <script src="../../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <script src="../../node_modules/@xterm/addon-web-links/lib/addon-web-links.js"></script>
+  <script src="app.js"></script>
+  <script src="session.js"></script>
+</body>
+</html>

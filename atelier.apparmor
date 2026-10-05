@@ -1,0 +1,7 @@
+abi <abi/4.0>,
+include <tunables/global>
+
+profile atelier-electron /home/louisduprat/Dev/atelier/node_modules/electron/dist/electron flags=(unconfined) {
+  userns,
+  include if exists <local/atelier-electron>
+}
