@@ -7,6 +7,7 @@ import sys
 import time
 
 ATELIER = os.path.join(os.path.dirname(os.path.realpath(__file__)), "atelier")
+SWAY = not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") and bool(os.environ.get("SWAYSOCK"))
 STATE_DIR = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or f"/tmp/claude-sessions-{os.getuid()}", "claude-sessions")
 NEEDS_YOU = ("permission_prompt", "elicitation_dialog", "elicitation_url_dialog", "agent_needs_input")
 INTERRUPTED = "[Request interrupted by user"
@@ -108,11 +109,54 @@ def interrupted(path):
     return False
 
 
+def command_json(args):
+    return json.loads(subprocess.run(args, capture_output=True, text=True, timeout=2).stdout)
+
+
+def sway_windows(node, order=(), out=None):
+    out = [] if out is None else out
+    if node.get("pid") and node.get("type") in ("con", "floating_con"):
+        out.append({
+            "address": node["id"],
+            "class": node.get("app_id") or (node.get("window_properties") or {}).get("class", ""),
+            "pid": node["pid"],
+            "title": node.get("name") or "",
+            "focused": bool(node.get("focused")),
+            "order": order,
+        })
+    focus = node.get("focus") or []
+    for child in (node.get("nodes") or []) + (node.get("floating_nodes") or []):
+        rank = focus.index(child["id"]) if child["id"] in focus else len(focus)
+        sway_windows(child, order + (rank,), out)
+    return out
+
+
 def clients():
     try:
-        return json.loads(subprocess.run(["hyprctl", "clients", "-j"], capture_output=True, text=True, timeout=2).stdout)
+        if SWAY:
+            windows = sorted(sway_windows(command_json(["swaymsg", "-t", "get_tree", "-r"])), key=lambda w: w["order"])
+            return [{**w, "recency": i} for i, w in enumerate(windows)]
+        return [{**c, "recency": c.get("focusHistoryID", 99)} for c in command_json(["hyprctl", "clients", "-j"])]
     except (OSError, ValueError, subprocess.SubprocessError):
         return []
+
+
+def active_window():
+    if SWAY:
+        return next((w for w in clients() if w["focused"]), None)
+    try:
+        return command_json(["hyprctl", "activewindow", "-j"]) or None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def focus_window(address):
+    command = ["swaymsg", f"[con_id={address}]", "focus"] if SWAY \
+        else ["hyprctl", "dispatch", f'hl.dsp.focus({{ window = "address:{address}" }})']
+    try:
+        subprocess.run(command, capture_output=True, timeout=2)
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def window_of(session, windows):
@@ -123,14 +167,11 @@ def window_of(session, windows):
         titled = [w for w in candidates if title in w.get("title", "")]
         if titled:
             return titled[0]
-    return min(candidates, key=lambda w: w.get("focusHistoryID", 99)) if candidates else None
+    return min(candidates, key=lambda w: w.get("recency", 99)) if candidates else None
 
 
 def terminal_focused(session):
-    try:
-        active = json.loads(subprocess.run(["hyprctl", "activewindow", "-j"], capture_output=True, text=True, timeout=2).stdout)
-    except (OSError, ValueError, subprocess.SubprocessError):
-        return False
+    active = active_window()
     if not active or not window_of(session, [active]):
         return False
     return not session.get("title") or session["title"] in active.get("title", "")
@@ -250,7 +291,7 @@ def focus(session_id):
     window = window_of(session, clients())
     if not window:
         return 1
-    subprocess.run(["hyprctl", "dispatch", f'hl.dsp.focus({{ window = "address:{window["address"]}" }})'], capture_output=True, timeout=2)
+    focus_window(window["address"])
     launcher = ATELIER if os.access(ATELIER, os.X_OK) else shutil.which("atelier")
     if window.get("class") == "atelier" and launcher:
         subprocess.Popen([launcher, f"--open-session={session_id}"],
