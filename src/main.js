@@ -104,7 +104,20 @@ const loaders = {
 async function refreshClaude() {
   data.live = await claude.live(config)
   data.past = claude.past()
+  markOpenSessionSeen()
   push()
+}
+
+let openView = null
+
+function markOpenSessionSeen() {
+  if (!openView || !win?.isFocused()) return false
+  const terminal = terminals.get(openView)
+  const session = terminal && !terminal.exited && data.live.find(s => s.pid === terminal.pid && s.status === 'done' && !s.seen)
+  if (!session) return false
+  session.seen = true
+  claude.markSeen(config, session.id)
+  return true
 }
 
 function refreshAll() {
@@ -387,7 +400,11 @@ ipcMain.handle('term-replay', (_event, id) => {
   terminals.flush()
   return terminals.replay(id)
 })
-ipcMain.on('view', (_event, view) => tagWindow(view === 'session'))
+ipcMain.on('view', (_event, view, id) => {
+  openView = view === 'session' ? id : null
+  if (markOpenSessionSeen()) push()
+  tagWindow(view === 'session')
+})
 ipcMain.handle('clipboard-read', () => clipboard.readText())
 ipcMain.handle('clipboard-write', (_event, text) => clipboard.writeText(String(text)))
 
@@ -452,6 +469,7 @@ function createWindow() {
 
   let lastFocusRefresh = Date.now()
   win.on('focus', () => {
+    if (markOpenSessionSeen()) push()
     if (Date.now() - lastFocusRefresh > 60000) {
       lastFocusRefresh = Date.now()
       refreshAll()

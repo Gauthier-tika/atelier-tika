@@ -5,7 +5,7 @@ contextBridge.exposeInMainWorld('atelier', {
   onState: callback => ipcRenderer.on('state', (_event, state) => callback(state)),
   onOpenView: callback => ipcRenderer.on('open-view', (_event, id) => callback(id)),
   ready: () => ipcRenderer.send('ready'),
-  view: name => ipcRenderer.send('view', name),
+  view: (name, id) => ipcRenderer.send('view', name, id),
   term: {
     input: (id, data) => ipcRenderer.send('term-input', id, data),
     resize: (id, cols, rows) => ipcRenderer.send('term-resize', id, cols, rows),

@@ -420,7 +420,7 @@ function openSession(sid) {
   if (!view.layouts.has(sid)) view.layouts.set(sid, { t: 'leaf', id: sid })
   if (!view.focused.has(sid)) view.focused.set(sid, sid)
   document.body.dataset.view = 'session'
-  window.atelier.view('session')
+  window.atelier.view('session', sid)
   renderNav()
   for (const [id, el] of view.containers) el.hidden = id !== sid
   layout(sid)

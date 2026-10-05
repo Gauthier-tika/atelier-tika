@@ -160,4 +160,8 @@ async function focus(config, id) {
   }
 }
 
-module.exports = { live, past, watch, focus }
+function markSeen(config, id) {
+  return run('python3', [config.claudeSessionsBin, 'seen', id]).catch(() => {})
+}
+
+module.exports = { live, past, watch, focus, markSeen }
