@@ -91,10 +91,10 @@ async function load(name, task, apply) {
 }
 
 const loaders = {
-  jira: () => load('jira', async () => [await jira.boardColumns(), await jira.tickets(), await jira.unassigned()], ([columns, tickets, unassigned]) => {
+  jira: (reconcile = []) => load('jira', async () => [await jira.boardColumns(), await jira.tickets(reconcile), await jira.unassigned()], ([columns, tickets, unassigned]) => {
     data.columns = columns
     data.tickets = tickets
-    data.unassigned = unassigned
+    data.unassigned = unassigned.filter(item => !tickets.some(t => t.key === item.key))
   }),
   github: () => load('github', () => github.pullRequests(config), result => { data.github = result }).then(() => loaders.deploys()),
   deploys: () => load('deploys', () => github.qualifDeploys(config, qualifBranches()), result => { data.deploys = result }),
@@ -261,10 +261,10 @@ const actions = {
     try {
       status = await jira.moveTo(key, column.statusIds)
     } catch (error) {
-      await loaders.jira()
+      await loaders.jira([item.id])
       throw new Error(`Assigned ${key} to you, but could not move it: ${error.message}`)
     }
-    await loaders.jira()
+    await loaders.jira([item.id])
     return `Assigned ${key} to you and moved it to ${status}`
   },
 
@@ -285,7 +285,7 @@ const actions = {
     const column = data.columns?.[station]
     if (!column || !ticket(key)) throw new Error('Unknown ticket or column')
     const status = await jira.moveTo(key, column.statusIds)
-    await loaders.jira()
+    await loaders.jira([ticket(key).id])
     return `Moved ${key} to ${status}`
   },
 
@@ -294,7 +294,7 @@ const actions = {
     const item = ticket(key)
     if (item) item.blocked = blocked
     push()
-    loaders.jira()
+    loaders.jira(item ? [item.id] : [])
     return blocked ? `Flagged ${key} as blocked` : `Removed the blocked flag from ${key}`
   },
 

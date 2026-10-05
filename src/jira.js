@@ -29,7 +29,10 @@ class Jira {
 
   async request(method, path, { params, body } = {}) {
     const url = new URL(this.config.jiraBase + path)
-    for (const [key, value] of Object.entries(params || {})) url.searchParams.set(key, value)
+    for (const [key, value] of Object.entries(params || {})) {
+      if (Array.isArray(value)) value.forEach(item => url.searchParams.append(key, item))
+      else url.searchParams.set(key, value)
+    }
     const response = await fetch(url, {
       method,
       headers: {
@@ -72,7 +75,7 @@ class Jira {
     return this.columns
   }
 
-  async tickets() {
+  async tickets(reconcile = []) {
     const flagField = await this.discoverFlagField()
     const fields = ['summary', 'status', 'issuetype', 'priority', 'timespent', 'updated', 'parent', flagField, this.config.qualifField]
     const issues = []
@@ -83,6 +86,7 @@ class Jira {
           jql: 'assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC',
           fields: fields.join(','),
           maxResults: 100,
+          reconcileIssues: reconcile,
           ...(nextPageToken ? { nextPageToken } : {})
         }
       })
@@ -95,6 +99,7 @@ class Jira {
       const flag = f[flagField]
       if (Array.isArray(flag) && flag[0]) this.flagOption = flag[0].id
       return {
+        id: issue.id,
         key: issue.key,
         summary: f.summary,
         url: `${this.config.jiraBase}/browse/${issue.key}`,
@@ -121,6 +126,7 @@ class Jira {
       }
     })
     return page.issues.map(issue => ({
+      id: issue.id,
       key: issue.key,
       summary: issue.fields.summary,
       url: `${this.config.jiraBase}/browse/${issue.key}`,
