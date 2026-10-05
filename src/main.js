@@ -148,7 +148,6 @@ const actions = {
       cwd: resume ? launch.directoryFor(config, null, view.previous.cwd) : config.repoDir,
       args: resume ? ['--resume', view.previous.id] : [config.startPrompt.replaceAll('{key}', key)]
     })
-    terminals.spawnEditor(id)
     return { view: id }
   },
 

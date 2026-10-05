@@ -110,6 +110,8 @@ window.atelier.term.onData((id, data) => {
 })
 
 window.atelier.term.onExit(id => {
+  const terminal = ui.state?.terminals.find(t => t.id === id)
+  if (terminal) terminal.exited = true
   const sid = sessionOf(id)
   if (id !== sid) removeLeaf(sid, id)
   renderSession()
