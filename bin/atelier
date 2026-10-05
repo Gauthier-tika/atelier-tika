@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+dir="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+exec "$dir/node_modules/.bin/electron" "$dir" --ozone-platform-hint=auto --class=atelier "$@"

@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export GIT_PAGER=cat PAGER=cat LC_ALL=C
+
+usage() {
+    cat <<'EOF'
+usage: qualif-sync <qualif-number> [PR...] [-x PR]... [--dry-run] [--deploy]
+
+Rebuild the branch qualif-<github-login>-<N> from origin/staging plus a copy of
+the commits of each PR and push it; --deploy then deploys it to qualif<N>.
+Each qualif has its own branch, so its image tag is not shared with another qualif.
+The PR commits, their branches and the working copy are not touched.
+
+It also reports the PRs that change the same files (re-check them together
+when one of them leaves qualif) and the PRs that do not apply alone on staging.
+
+  PR...          PRs to include, in this order (default: all your open PRs)
+  -x, --except   leave this PR out (repeatable)
+  --dry-run      build the branch and show it, push nothing
+  --deploy       also run deploy-qualif.yml on the pushed branch
+EOF
+}
+
+die() { echo "error: $*" >&2; exit 1; }
+
+qualif=""
+prs=()
+excluded=()
+dry_run=0
+deploy=0
+while (($#)); do
+    case $1 in
+        -x|--except) excluded+=("${2:?missing PR number after $1}"); shift 2 ;;
+        --dry-run) dry_run=1; shift ;;
+        --deploy) deploy=1; shift ;;
+        -h|--help) usage; exit 0 ;;
+        -*) usage >&2; exit 2 ;;
+        *) if [[ -z $qualif ]]; then qualif=$1; else prs+=("$1"); fi; shift ;;
+    esac
+done
+
+[[ $qualif =~ ^([1-9]|1[0-5])$ ]] || { usage >&2; exit 2; }
+((dry_run && deploy)) && die "--dry-run and --deploy cannot be combined"
+
+cd "$(git rev-parse --show-toplevel)"
+branch="qualif-$(gh api user --jq .login)-$qualif"
+environment="qualif$qualif"
+
+echo "Fetching origin/staging..."
+git fetch -q origin staging
+
+if ((${#prs[@]} == 0)); then
+    mapfile -t prs < <(gh pr list --author @me --state open --json number --jq '.[].number' | sort -n)
+fi
+
+selected=()
+for pr in "${prs[@]}"; do
+    [[ " ${excluded[*]} " == *" $pr "* ]] || selected+=("$pr")
+done
+((${#selected[@]})) || die "no PR to deploy"
+
+copy_commit() {
+    local commit=$1 onto=$2 tree
+    [[ $(git rev-list --parents -n 1 "$commit" | wc -w) -eq 2 ]] || die "$(git rev-parse --short "$commit") is a merge commit"
+    tree=$(git merge-tree --write-tree --merge-base="$commit^" "$onto" "$commit" | head -n 1) || return 1
+    GIT_AUTHOR_NAME=$(git show -s --format=%an "$commit") \
+    GIT_AUTHOR_EMAIL=$(git show -s --format=%ae "$commit") \
+    GIT_AUTHOR_DATE=$(git show -s --format=%ad "$commit") \
+        git commit-tree "$tree" -p "$onto" -m "$(git show -s --format=%B "$commit")"
+}
+
+applies_alone() {
+    local head=$1 onto=$base commit
+    for commit in $(git rev-list --reverse --topo-order "$head" "^$base"); do
+        onto=$(copy_commit "$commit" "$onto") || return 1
+    done
+}
+
+base=$(git rev-parse origin/staging)
+tip=$base
+included=()
+summary=()
+deployed=()
+not_alone=()
+declare -A pr_files
+
+for pr in "${selected[@]}"; do
+    read -r state head_ref head_oid title < <(
+        gh pr view "$pr" --json state,headRefName,headRefOid,title \
+            --jq '"\(.state) \(.headRefName) \(.headRefOid) \(.title)"'
+    ) || die "cannot read PR #$pr"
+
+    [[ $state == OPEN ]] || die "PR #$pr is $state"
+
+    git cat-file -e "$head_oid^{commit}" 2>/dev/null || git fetch -q origin "$head_ref"
+    git cat-file -e "$head_oid^{commit}" 2>/dev/null || die "cannot fetch the head of PR #$pr ($head_ref)"
+
+    local_head=$(git rev-parse -q --verify "refs/heads/$head_ref" || true)
+    if [[ -n $local_head && $local_head != "$head_oid" ]] && ! git merge-base --is-ancestor "$local_head" "$head_oid"; then
+        echo "warning: local branch $head_ref differs from PR #$pr; qualif gets the pushed version"
+    fi
+
+    mapfile -t commits < <(git rev-list --reverse --topo-order "$head_oid" "^$base" "${included[@]/#/^}")
+    included+=("$head_oid")
+    if ((${#commits[@]} == 0)); then
+        summary+=("  #$pr  already included  $title")
+        continue
+    fi
+
+    for commit in "${commits[@]}"; do
+        tip=$(copy_commit "$commit" "$tip") && continue
+        applies_alone "$head_oid" \
+            && die "PR #$pr ($head_ref) conflicts with the PRs before it; leave one of them out with -x, or stack them" \
+            || die "PR #$pr ($head_ref) conflicts with origin/staging; rebase it, or leave it out with -x $pr"
+    done
+
+    pr_files[$pr]=$(for commit in "${commits[@]}"; do git diff-tree --no-commit-id --name-only -r "$commit"; done | sort -u)
+    deployed+=("$pr")
+    applies_alone "$head_oid" || not_alone+=("$pr")
+
+    summary+=("  #$pr  $head_ref  $title")
+done
+
+echo
+echo "$branch = origin/staging +"
+printf '%s\n' "${summary[@]}"
+echo
+git log --reverse --format='  %h %s' "$base..$tip"
+echo
+
+coupled=()
+for ((i = 0; i < ${#deployed[@]}; i++)); do
+    for ((j = i + 1; j < ${#deployed[@]}; j++)); do
+        a=${deployed[i]} b=${deployed[j]}
+        mapfile -t shared < <(comm -12 <(echo "${pr_files[$a]}") <(echo "${pr_files[$b]}") | grep -v '^translations/' || true)
+        translations=$(comm -12 <(echo "${pr_files[$a]}") <(echo "${pr_files[$b]}") | grep -c '^translations/' || true)
+        ((${#shared[@]} + translations)) || continue
+        line="  #$a + #$b: "
+        if ((${#shared[@]})); then
+            line+=$(printf '%s, ' "${shared[@]:0:3}" | sed 's/, $//')
+            ((${#shared[@]} > 3)) && line+=" (+$((${#shared[@]} - 3)) more)"
+            ((translations)) && line+=", +$translations translation files"
+        else
+            line+="translation files only ($translations)"
+        fi
+        coupled+=("$line")
+    done
+done
+
+echo "PRs changing the same files (re-check them together if one leaves qualif):"
+if ((${#coupled[@]})); then printf '%s\n' "${coupled[@]}"; else echo "  none"; fi
+if ((${#not_alone[@]})); then
+    echo
+    echo "PRs that do not apply alone on origin/staging (they depend on a PR before them):"
+    printf '  #%s\n' "${not_alone[@]}"
+fi
+echo
+
+if ((dry_run)); then
+    echo "Dry run: nothing pushed ($(git rev-parse --short "$tip") would be $branch)."
+    exit 0
+fi
+
+git push -q -f origin "$tip:refs/heads/$branch"
+echo "Pushed $(git rev-parse --short "$tip") to $branch."
+
+deploy_cmd=(gh workflow run deploy-qualif.yml --ref "$branch" -f "environment=$environment")
+if ((deploy)); then
+    "${deploy_cmd[@]}"
+    echo "Deployment to $environment started: gh run list --workflow deploy-qualif.yml --limit 1"
+else
+    echo "To deploy:  ${deploy_cmd[*]}"
+fi
+echo "After the deployment, clear the Redis cache on $environment or the PO may see stale fragments."

@@ -1,5 +1,5 @@
 const fs = require('node:fs')
-const { run } = require('./run')
+const { run, env } = require('./run')
 
 function qualifNumber(value) {
   const text = typeof value === 'string' ? value : value?.value || ''
@@ -178,8 +178,12 @@ class Jira {
     })
   }
 
+  jiraTime(args) {
+    return run('python3', [this.config.jiraTimeBin, ...args], { env: { ...env, JIRA_BASE: this.config.jiraBase, JIRA_TIME_ENV: this.config.jiraEnv } })
+  }
+
   async week() {
-    const output = await run('python3', [this.config.jiraTimeBin, 'week'])
+    const output = await this.jiraTime(['week'])
     const data = JSON.parse(output)
     if (data.error) throw new Error(data.error)
     const today = data.today
@@ -198,7 +202,7 @@ class Jira {
     const minutes = Math.max(1, Math.round(seconds / 60))
     let output
     try {
-      output = await run('python3', [this.config.jiraTimeBin, 'log', key, `${minutes}m`])
+      output = await this.jiraTime(['log', key, `${minutes}m`])
     } catch (error) {
       output = error.stdout
     }

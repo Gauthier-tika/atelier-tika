@@ -72,13 +72,13 @@ class Qualifs {
     this.onChange()
   }
 
-  sync(number, { cwd, prs, deploy, tickets }) {
+  sync(number, { bin, cwd, prs, deploy, tickets }) {
     if (!prs.length) throw new Error('No open pull request to put on this qualif')
     const args = [String(number), ...prs.map(pr => String(pr.number)), deploy ? '--deploy' : '--dry-run']
     return this.exec(number, {
       kind: deploy ? 'sync' : 'preview',
       cwd,
-      steps: [['qualif-sync', args]],
+      steps: [[bin, args]],
       record: { tickets, prs },
       done: (item, run) => { if (deploy) item.synced = { at: run.at, tickets, prs } }
     })

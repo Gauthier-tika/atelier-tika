@@ -34,7 +34,7 @@ function directoryFor(config, repo, cwd) {
   if (cwd && fs.existsSync(cwd)) return cwd
   if (repo) {
     if (path.basename(config.repoDir) === repo && fs.existsSync(config.repoDir)) return config.repoDir
-    const guess = path.join(os.homedir(), 'Dev', repo)
+    const guess = path.join(config.devDir, repo)
     if (fs.existsSync(guess)) return guess
   }
   return fs.existsSync(config.repoDir) ? config.repoDir : os.homedir()

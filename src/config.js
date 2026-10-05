@@ -3,12 +3,13 @@ const os = require('node:os')
 const path = require('node:path')
 
 const home = os.homedir()
+const bundled = name => path.join(__dirname, '..', 'bin', name)
 const expand = p => p.replace(/^~(?=$|\/)/, home)
 
 const defaults = {
   jiraBase: 'https://tikamoon.atlassian.net',
   jiraEnv: '~/.config/jira-time/env',
-  jiraTimeBin: '~/.local/bin/jira-time',
+  jiraTimeBin: bundled('jira-time'),
   boardId: 17,
   columnLabels: {
     'In Progress / PR': 'In progress',
@@ -26,8 +27,10 @@ const defaults = {
   qualifKubeContext: 'gke_tikamoon-qualif_europe-west1_cluster-tikamoon-qualif',
   githubOrg: 'Tikamoon',
   reviewRepos: [],
+  devDir: '~/Dev',
   repoDir: '~/Dev/modulo',
-  claudeSessionsBin: '~/.local/bin/claude-sessions',
+  claudeSessionsBin: bundled('claude-sessions'),
+  qualifSyncBin: bundled('qualif-sync'),
   claudeCommand: 'claude',
   startPrompt: '/jira {key}',
   reviewPrompt: '/review {number}',
@@ -41,7 +44,7 @@ function load() {
     user = JSON.parse(fs.readFileSync(file, 'utf8'))
   } catch {}
   const config = { ...defaults, ...user, columnLabels: { ...defaults.columnLabels, ...user.columnLabels } }
-  for (const key of ['jiraEnv', 'jiraTimeBin', 'repoDir', 'claudeSessionsBin'])
+  for (const key of ['jiraEnv', 'jiraTimeBin', 'devDir', 'repoDir', 'claudeSessionsBin', 'qualifSyncBin'])
     config[key] = expand(config[key])
   return config
 }

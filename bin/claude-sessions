@@ -1,0 +1,283 @@
+#!/usr/bin/env python3
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+ATELIER = os.path.join(os.path.dirname(os.path.realpath(__file__)), "atelier")
+STATE_DIR = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or f"/tmp/claude-sessions-{os.getuid()}", "claude-sessions")
+NEEDS_YOU = ("permission_prompt", "elicitation_dialog", "elicitation_url_dialog", "agent_needs_input")
+INTERRUPTED = "[Request interrupted by user"
+
+
+def state_path(session_id):
+    return os.path.join(STATE_DIR, os.path.basename(session_id) + ".json")
+
+
+def load(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def save(session):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    path = state_path(session["id"])
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(session, f)
+    os.replace(tmp, path)
+
+
+def stat_fields(pid):
+    with open(f"/proc/{pid}/stat") as f:
+        data = f.read()
+    return data[:data.rfind(")")].split("(", 1)[1], data[data.rfind(")") + 2:].split()
+
+
+def start_time(pid):
+    try:
+        return stat_fields(pid)[1][19]
+    except (OSError, IndexError):
+        return None
+
+
+def ancestors(pid):
+    chain = []
+    try:
+        while pid > 1 and len(chain) < 32:
+            comm, fields = stat_fields(pid)
+            chain.append((pid, comm))
+            pid = int(fields[1])
+    except (OSError, ValueError, IndexError):
+        pass
+    return chain
+
+
+def claude_pid():
+    for pid, comm in ancestors(os.getppid()):
+        if comm == "claude":
+            return pid
+    return None
+
+
+def transcript_title(path):
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - 512 * 1024))
+            lines = f.read().splitlines()
+    except OSError:
+        return ""
+    for line in reversed(lines):
+        if b"-title" not in line:
+            continue
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if not str(entry.get("type", "")).endswith("-title"):
+            continue
+        for key, value in entry.items():
+            if key.endswith("Title") and isinstance(value, str) and value.strip():
+                return value.strip()
+    return ""
+
+
+def interrupted(path):
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - 16 * 1024))
+            lines = f.read().splitlines()
+    except OSError:
+        return False
+    for line in reversed(lines):
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if entry.get("type") == "assistant":
+            return False
+        if entry.get("type") == "user":
+            return INTERRUPTED in json.dumps(entry.get("message", ""))
+    return False
+
+
+def clients():
+    try:
+        return json.loads(subprocess.run(["hyprctl", "clients", "-j"], capture_output=True, text=True, timeout=2).stdout)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return []
+
+
+def window_of(session, windows):
+    chain = {pid for pid, _ in ancestors(session.get("pid") or 0)}
+    candidates = [w for w in windows if w.get("pid") in chain]
+    title = session.get("title", "")
+    if title:
+        titled = [w for w in candidates if title in w.get("title", "")]
+        if titled:
+            return titled[0]
+    return min(candidates, key=lambda w: w.get("focusHistoryID", 99)) if candidates else None
+
+
+def terminal_focused(session):
+    try:
+        active = json.loads(subprocess.run(["hyprctl", "activewindow", "-j"], capture_output=True, text=True, timeout=2).stdout)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return False
+    if not active or not window_of(session, [active]):
+        return False
+    return not session.get("title") or session["title"] in active.get("title", "")
+
+
+def hook():
+    try:
+        payload = json.load(sys.stdin)
+    except ValueError:
+        return
+    session_id = payload.get("session_id")
+    event = payload.get("hook_event_name", "")
+    if not session_id or payload.get("agent_id"):
+        return
+    path = state_path(session_id)
+    if event == "SessionEnd":
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return
+
+    now = time.time()
+    session = load(path) or {"id": session_id, "status": "idle", "prompt": "", "title": "", "seen": True, "since": now}
+    cwd = payload.get("cwd") or session.get("cwd", "")
+    session.update({
+        "cwd": cwd,
+        "project": os.path.basename(cwd.rstrip("/")) or cwd,
+        "mode": payload.get("permission_mode", session.get("mode", "")),
+        "transcript": payload.get("transcript_path") or session.get("transcript", ""),
+        "updated": now,
+    })
+    pid = claude_pid()
+    if pid:
+        session["pid"] = pid
+        session["started"] = start_time(pid)
+
+    status, message = session["status"], session.get("message", "")
+    if event == "SessionStart":
+        if payload.get("source") != "compact":
+            status, message = "idle", ""
+    elif event == "UserPromptSubmit":
+        status, message = "working", ""
+        session["prompt"] = " ".join(str(payload.get("prompt", "")).split())[:200]
+    elif event in ("PreToolUse", "PostToolUse", "PostToolUseFailure"):
+        status, message = "working", ""
+    elif event == "Notification" and payload.get("notification_type") in NEEDS_YOU:
+        status, message = "needs-you", str(payload.get("message", ""))[:200]
+    elif event == "Stop":
+        status, message = "done", ""
+    elif event == "StopFailure":
+        status, message = "done", "Stopped on an error"
+
+    if status != session["status"]:
+        session["since"] = now
+    session["status"], session["message"] = status, message
+
+    if not session.get("title") or event in ("SessionStart", "UserPromptSubmit", "Notification", "Stop", "StopFailure"):
+        session["title"] = transcript_title(session["transcript"]) or session.get("title", "")
+    if status == "done" and event in ("Stop", "StopFailure"):
+        session["seen"] = terminal_focused(session)
+    elif status != "done":
+        session["seen"] = True
+    save(session)
+
+
+def alive(session):
+    pid = session.get("pid")
+    if not pid:
+        return time.time() - session.get("updated", 0) < 12 * 3600
+    return start_time(pid) == session.get("started")
+
+
+def rank(session):
+    if session["status"] == "done":
+        return 3 if session.get("seen") else 1
+    return {"needs-you": 0, "working": 2}.get(session["status"], 4)
+
+
+def sessions():
+    try:
+        names = os.listdir(STATE_DIR)
+    except OSError:
+        return []
+    result = []
+    for name in names:
+        if not name.endswith(".json"):
+            continue
+        path = os.path.join(STATE_DIR, name)
+        session = load(path)
+        if not session:
+            continue
+        if not alive(session):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            continue
+        if session["status"] in ("needs-you", "working") and interrupted(session.get("transcript", "")):
+            session.update({"status": "idle", "message": "", "seen": True})
+            save(session)
+        result.append(session)
+    return sorted(result, key=lambda s: (rank(s), -s.get("since", 0)))
+
+
+def mark_seen(target):
+    for session in sessions():
+        if session["status"] == "done" and not session.get("seen") and target in ("all", session["id"]):
+            session["seen"] = True
+            save(session)
+
+
+def focus(session_id):
+    session = load(state_path(session_id))
+    if not session:
+        return 1
+    window = window_of(session, clients())
+    if not window:
+        return 1
+    subprocess.run(["hyprctl", "dispatch", f'hl.dsp.focus({{ window = "address:{window["address"]}" }})'], capture_output=True, timeout=2)
+    launcher = ATELIER if os.access(ATELIER, os.X_OK) else shutil.which("atelier")
+    if window.get("class") == "atelier" and launcher:
+        subprocess.Popen([launcher, f"--open-session={session_id}"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    mark_seen(session_id)
+    return 0
+
+
+def main():
+    command = sys.argv[1] if len(sys.argv) > 1 else "list"
+    if command == "hook":
+        try:
+            hook()
+        except Exception:
+            pass
+        return 0
+    if command == "list":
+        print(json.dumps(sessions()))
+        return 0
+    if command == "seen" and len(sys.argv) > 2:
+        mark_seen(sys.argv[2])
+        return 0
+    if command == "focus" and len(sys.argv) > 2:
+        return focus(sys.argv[2])
+    print("usage: claude-sessions hook | list | seen <id|all> | focus <id>", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

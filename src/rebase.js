@@ -115,7 +115,7 @@ async function start(repoDir, pr) {
   return { status: 'pushed', newHead, ...context }
 }
 
-function prompt(key, pr, { upstream, base, oldHead, files = [] }, withSapling = true) {
+function prompt(key, pr, { upstream, base, oldHead, files = [] }, { withSapling = true, repoDir }) {
   return [
     `${key}: Atelier started rebasing PR #${pr.number} (${pr.branch}) onto origin/${pr.base} (${base.slice(0, 12)}) in this git worktree, and the rebase stopped on conflicts${files.length ? ` in ${files.join(', ')}` : ''}.`,
     '',
@@ -125,7 +125,7 @@ function prompt(key, pr, { upstream, base, oldHead, files = [] }, withSapling = 
     `4. Show me \`git range-diff ${upstream.slice(0, 12)}..${oldHead.slice(0, 12)} ${base.slice(0, 12)}..HEAD\` and one line per resolved conflict, then wait for my go.`,
     `5. Only after my go: \`git push --force-with-lease=refs/heads/${pr.branch}:${oldHead} origin HEAD:refs/heads/${pr.branch}\`.`,
     '',
-    withSapling ? 'Use git, not sl, in this worktree: Sapling does not work in git worktrees. Do not touch ~/Dev/modulo.' : 'Do not touch ~/Dev/modulo.'
+    `${withSapling ? 'Use git, not sl, in this worktree: Sapling does not work in git worktrees. ' : ''}Do not touch ${repoDir}.`
   ].join('\n')
 }
 

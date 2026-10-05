@@ -1,0 +1,272 @@
+#!/usr/bin/env python3
+"""Temps pointe sur Jira : module waybar et donnees du panneau Quickshell.
+
+  jira-time bar                  JSON waybar : heures pointees aujourd'hui
+  jira-time week [decalage] [--cached]
+                                 JSON de la semaine (0 = en cours, -1 = precedente...) ;
+                                 --cached : derniere version en cache, sans appel reseau
+  jira-time log <TICKET> <duree> [AAAA-MM-JJ]
+                                 ajoute un worklog (duree : 1,5h  1h30  90m  2)
+  jira-time delete <TICKET> <ID>
+                                 supprime le worklog <ID> du ticket
+
+Identifiants : ATLASSIAN_EMAIL et ATLASSIAN_TOKEN (jeton API personnel), lus
+dans ~/.config/jira-time/env (ou le fichier nomme par JIRA_TIME_ENV).
+"""
+
+import base64
+import concurrent.futures
+import datetime as dt
+import json
+import os
+import re
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+BASE = os.environ.get("JIRA_BASE", "https://tikamoon.atlassian.net").rstrip("/")
+DAILY_TARGET = 7 * 3600
+ENV_FILES = [os.path.expanduser(os.environ.get("JIRA_TIME_ENV", "~/.config/jira-time/env"))]
+CACHE_DIR = os.path.expanduser("~/.cache/jira-time")
+# Signal waybar du module custom/jira (cf. waybar/module.jsonc)
+WAYBAR_SIGNAL = 9
+
+
+class JiraError(Exception):
+    pass
+
+
+def credentials():
+    env = {}
+    for path in ENV_FILES:
+        if not os.path.isfile(path):
+            continue
+        for line in open(path, encoding="utf-8"):
+            m = re.match(r"\s*(?:export\s+)?(ATLASSIAN_\w+)\s*=\s*(.*?)\s*$", line)
+            if m:
+                env.setdefault(m[1], m[2].strip("'\""))
+        if env.get("ATLASSIAN_EMAIL") and env.get("ATLASSIAN_TOKEN"):
+            return env["ATLASSIAN_EMAIL"], env["ATLASSIAN_TOKEN"]
+    raise JiraError("Identifiants Jira introuvables (~/.config/jira-time/env)")
+
+
+def request(method, path, params=None, body=None):
+    email, token = credentials()
+    url = BASE + path + ("?" + urllib.parse.urlencode(params) if params else "")
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("Authorization", "Basic " + base64.b64encode(f"{email}:{token}".encode()).decode())
+    req.add_header("Accept", "application/json")
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            raw = resp.read()
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode(errors="replace")
+        try:
+            j = json.loads(detail)
+            detail = "; ".join(j.get("errorMessages", []) + list(j.get("errors", {}).values())) or detail
+        except ValueError:
+            pass
+        raise JiraError(f"HTTP {e.code} : {detail[:200]}") from None
+    except urllib.error.URLError as e:
+        raise JiraError(f"Jira injoignable : {e.reason}") from None
+    return json.loads(raw) if raw else {}
+
+
+def monday(offset=0):
+    today = dt.date.today()
+    return today - dt.timedelta(days=today.weekday()) + dt.timedelta(weeks=offset)
+
+
+def collect(start, end):
+    """Secondes pointees par l'utilisateur, par jour et par ticket, de start a end inclus."""
+    me = request("GET", "/rest/api/3/myself")["accountId"]
+    jql = (f'worklogAuthor = currentUser() AND worklogDate >= "{start}" '
+           f'AND worklogDate <= "{end}" ORDER BY key')
+    issues, token = [], None
+    while True:
+        params = {"jql": jql, "fields": "summary", "maxResults": 100}
+        if token:
+            params["nextPageToken"] = token
+        page = request("GET", "/rest/api/3/search/jql", params)
+        issues += page.get("issues", [])
+        token = page.get("nextPageToken")
+        if not token or page.get("isLast", True):
+            break
+
+    after = int(dt.datetime.combine(start, dt.time()).timestamp() * 1000)
+    before = int(dt.datetime.combine(end + dt.timedelta(days=1), dt.time()).timestamp() * 1000)
+
+    def ticket(issue):
+        days, entries, at = {}, [], 0
+        while True:
+            page = request("GET", f"/rest/api/3/issue/{issue['key']}/worklog",
+                           {"startedAfter": after, "startedBefore": before, "startAt": at, "maxResults": 1000})
+            for w in page.get("worklogs", []):
+                if w.get("author", {}).get("accountId") != me:
+                    continue
+                day = w["started"][:10]
+                days[day] = days.get(day, 0) + w.get("timeSpentSeconds", 0)
+                entries.append({
+                    "id": w["id"],
+                    "date": day,
+                    "time": w["started"][11:16],
+                    "seconds": w.get("timeSpentSeconds", 0),
+                    "comment": plain_text(w.get("comment")),
+                })
+            at += len(page.get("worklogs", []))
+            if at >= page.get("total", 0) or not page.get("worklogs"):
+                break
+        return {
+            "key": issue["key"],
+            "summary": issue["fields"].get("summary", ""),
+            "url": f"{BASE}/browse/{issue['key']}",
+            "days": days,
+            "worklogs": sorted(entries, key=lambda e: (e["date"], e["time"])),
+            "total": sum(days.values()),
+        }
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        return [t for t in pool.map(ticket, issues) if t["days"]]
+
+
+def plain_text(node):
+    if isinstance(node, str):
+        return node
+    if not isinstance(node, dict):
+        return ""
+    if node.get("type") == "text":
+        return node.get("text", "")
+    parts = [plain_text(child) for child in node.get("content", [])]
+    return (" " if node.get("type") == "doc" else "").join(p for p in parts if p).strip()
+
+
+def fmt(seconds):
+    h, m = divmod(round(seconds / 60), 60)
+    return f"{h}h{m:02d}" if m else f"{h}h"
+
+
+def cmd_week(args):
+    cached = "--cached" in args
+    args = [a for a in args if a != "--cached"]
+    offset = int(args[0]) if args else 0
+    start = monday(offset)
+    end = start + dt.timedelta(days=4)
+    cache = os.path.join(CACHE_DIR, f"week-{start}.json")
+    if cached:
+        if os.path.isfile(cache):
+            print(open(cache, encoding="utf-8").read())
+        return
+    tickets = collect(start, end)
+    days = []
+    for i in range(5):
+        d = (start + dt.timedelta(days=i)).isoformat()
+        days.append({"date": d, "total": sum(t["days"].get(d, 0) for t in tickets)})
+    out = json.dumps({
+        "offset": offset,
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "today": dt.date.today().isoformat(),
+        "dailyTarget": DAILY_TARGET,
+        "weeklyTarget": DAILY_TARGET * 5,
+        "days": days,
+        "total": sum(d["total"] for d in days),
+        "tickets": tickets,
+    }, ensure_ascii=False)
+    os.makedirs(CACHE_DIR, mode=0o700, exist_ok=True)
+    with open(cache + ".tmp", "w", encoding="utf-8") as f:
+        f.write(out)
+    os.replace(cache + ".tmp", cache)
+    print(out)
+
+
+def cmd_bar(_args):
+    today = dt.date.today()
+    try:
+        tickets = collect(today, today)
+    except JiraError as e:
+        print(json.dumps({"text": "󰔟 ?", "tooltip": str(e), "class": "error"}))
+        return
+    total = sum(t["total"] for t in tickets)
+    lines = [f"{t['key']}  {fmt(t['total'])}  {t['summary'][:50]}" for t in tickets]
+    if today.weekday() >= 5:
+        cls = "weekend"
+    elif total >= DAILY_TARGET:
+        cls = "done"
+    else:
+        cls = "missing"
+    print(json.dumps({
+        "text": f"󰔟 {fmt(total)}",
+        "tooltip": "\n".join(lines) or "Aucun temps pointé aujourd'hui",
+        "class": cls,
+        "percentage": min(100, round(total * 100 / DAILY_TARGET)),
+    }, ensure_ascii=False))
+
+
+def parse_duration(text):
+    """1,5h  1.5  1h30  1h 30m  90m  45min -> secondes."""
+    s = text.strip().lower().replace(",", ".").replace(" ", "")
+    m = re.fullmatch(r"(?:(\d+(?:\.\d+)?)h)?(?:(\d+)(?:m|min))?", s)
+    if m and (m[1] or m[2]):
+        seconds = float(m[1] or 0) * 3600 + int(m[2] or 0) * 60
+    else:
+        m = re.fullmatch(r"(\d+)h(\d+)", s) or re.fullmatch(r"(\d+(?:\.\d+)?)", s)
+        if not m:
+            raise JiraError(f"Durée illisible : {text}")
+        seconds = int(m[1]) * 3600 + int(m[2]) * 60 if m.lastindex == 2 else float(m[1]) * 3600
+    seconds = round(seconds / 60) * 60
+    if seconds <= 0 or seconds > 24 * 3600:
+        raise JiraError(f"Durée hors limites : {text}")
+    return seconds
+
+
+def cmd_log(args):
+    if len(args) < 2:
+        raise JiraError("Usage : jira-time log <TICKET> <durée> [AAAA-MM-JJ]")
+    key = args[0].strip().upper()
+    if not re.fullmatch(r"[A-Z][A-Z0-9]+-\d+", key):
+        raise JiraError(f"Ticket invalide : {args[0]}")
+    seconds = parse_duration(args[1])
+    day = dt.date.fromisoformat(args[2]) if len(args) > 2 and args[2] else dt.date.today()
+    now = dt.datetime.now().astimezone()
+    # Jour passe : midi, loin des bascules de fuseau ; aujourd'hui : l'heure courante
+    started = now if day == now.date() else dt.datetime.combine(day, dt.time(12), now.tzinfo)
+    request("POST", f"/rest/api/3/issue/{key}/worklog", {"notifyUsers": "false"}, {
+        "timeSpentSeconds": seconds,
+        "started": started.strftime("%Y-%m-%dT%H:%M:%S.000%z"),
+    })
+    os.system(f"pkill -RTMIN+{WAYBAR_SIGNAL} -x waybar >/dev/null 2>&1")
+    print(json.dumps({"ok": True, "key": key, "seconds": seconds, "date": day.isoformat()}))
+
+
+def cmd_delete(args):
+    if len(args) < 2:
+        raise JiraError("Usage : jira-time delete <TICKET> <ID>")
+    key = args[0].strip().upper()
+    if not re.fullmatch(r"[A-Z][A-Z0-9]+-\d+", key):
+        raise JiraError(f"Ticket invalide : {args[0]}")
+    if not re.fullmatch(r"\d+", args[1]):
+        raise JiraError(f"Identifiant de worklog invalide : {args[1]}")
+    request("DELETE", f"/rest/api/3/issue/{key}/worklog/{args[1]}", {"notifyUsers": "false"})
+    os.system(f"pkill -RTMIN+{WAYBAR_SIGNAL} -x waybar >/dev/null 2>&1")
+    print(json.dumps({"ok": True, "key": key, "id": args[1]}))
+
+
+def main():
+    cmd, args = (sys.argv[1], sys.argv[2:]) if len(sys.argv) > 1 else ("bar", [])
+    handlers = {"bar": cmd_bar, "week": cmd_week, "log": cmd_log, "delete": cmd_delete}
+    if cmd not in handlers:
+        print(__doc__, file=sys.stderr)
+        sys.exit(2)
+    try:
+        handlers[cmd](args)
+    except JiraError as e:
+        print(json.dumps({"error": str(e)}, ensure_ascii=False))
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

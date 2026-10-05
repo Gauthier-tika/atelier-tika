@@ -50,7 +50,7 @@ const qualifs = new Qualifs(() => {
 
 function repos() {
   const fs = require('node:fs')
-  const devDir = path.join(require('node:os').homedir(), 'Dev')
+  const devDir = config.devDir
   const dirs = config.repos?.length ? config.repos.map(configModule.expand) : (() => {
     try {
       return fs.readdirSync(devDir).map(name => path.join(devDir, name))
@@ -65,7 +65,7 @@ function repos() {
 
 function repoNamed(name) {
   const repo = repos().find(r => r.name === name)
-  if (!repo) throw new Error(`${name} is not a repository in ~/Dev`)
+  if (!repo) throw new Error(`${name} is not a repository in ${config.devDir}`)
   return repo
 }
 
@@ -188,7 +188,7 @@ const actions = {
       key,
       label: `Rebase of #${pr.number} onto ${pr.base}`,
       cwd: context.dir,
-      args: [rebase.prompt(key, pr, context, data.sapling)]
+      args: [rebase.prompt(key, pr, context, { withSapling: data.sapling, repoDir: config.repoDir })]
     })
     const waiting = await rebase.resume(pr)
     if (waiting) {
@@ -363,6 +363,7 @@ const actions = {
     if (missing.length) throw new Error(`${missing.join(', ')} ${missing.length > 1 ? 'have' : 'has'} no open pull request in ${path.basename(config.repoDir)}. Remove ${missing.length > 1 ? 'them' : 'it'} or open the PR first`)
     const prs = rows.flatMap(row => row.prs.map(pr => ({ number: pr.number, head: pr.head, key: row.key })))
     const run = await qualifs.sync(number, {
+      bin: config.qualifSyncBin,
       cwd: config.repoDir,
       prs,
       deploy: Boolean(deploy),

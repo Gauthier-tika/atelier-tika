@@ -2,7 +2,7 @@
 
 An Electron desktop app that puts my day-to-day Tikamoon work in one window: Jira tickets, Claude Code sessions, GitHub PRs and reviews, qualif environments and time tracking.
 
-It is built for one setup (Linux with Hyprland, Ghostty and Sapling) and is not meant as a general-purpose tool.
+It is built for one setup (Linux with Hyprland, Ghostty and Sapling) and is not meant as a general-purpose tool. It still runs without Hyprland or Sapling: window switching and `sl web` are then unavailable, and git takes over from Sapling.
 
 ![Atelier with demo data](demo/screenshot.png)
 
@@ -13,16 +13,16 @@ It is built for one setup (Linux with Hyprland, Ghostty and Sapling) and is not 
 - **Splits**: Ghostty-style panes inside a session. **Open nvim** puts nvim on the left of Claude, and extra shells split beside it. A pane closes when its program exits.
 - **PRs and reviews**: GitHub PRs and their checks, rebase a ticket's PR, start a Claude review of a PR.
 - **Qualifs**: which qualif environment holds which ticket, sync the Jira Qualif field, clear a qualif's caches.
-- **Repo tools**: open Claude, a shell, nvim or `sl web` in any repo under `~/Dev`.
+- **Repo tools**: open Claude, a shell or nvim in any repo under `~/Dev` (`devDir`), and `sl web` when Sapling is installed.
 
 ## Requirements
 
 - Node.js and npm
-- `claude` (Claude Code), `gh` (signed in), `sl` (Sapling), `git`
-- `kubectl` with access to the qualif cluster, for the qualif actions
-- To focus and open windows: `hyprctl`, `ghostty` and `uwsm-app` on Hyprland, or `swaymsg` and `alacritty` on Sway
+- `claude` (Claude Code), `gh` (signed in), `git`, `python3`, `bash` 4 or later
 - `nvim`
-- Two helper scripts, not part of this repo: `~/.local/bin/jira-time` (Jira worklogs) and `~/.local/bin/claude-sessions` (lists and focuses running Claude sessions)
+- `kubectl` with access to the qualif cluster, for the qualif actions
+- Optional: `sl` (Sapling), for `sl web`; without it Atelier uses git
+- Optional, to focus and open windows: `hyprctl`, `ghostty` and `uwsm-app` on Hyprland, or `swaymsg` and `alacritty` on Sway
 - Jira credentials in `~/.config/jira-time/env`:
 
   ```sh
@@ -37,13 +37,27 @@ npm install
 npm start
 ```
 
-To launch it from anywhere, put a wrapper on your `PATH`:
+To launch it from anywhere, link the launcher onto your `PATH`. It finds the app from its own location:
 
 ```sh
-#!/usr/bin/env bash
-set -euo pipefail
-dir="$HOME/Dev/atelier"
-exec "$dir/node_modules/.bin/electron" "$dir" --ozone-platform-hint=auto --class=atelier "$@"
+ln -s "$PWD/bin/atelier" ~/.local/bin/atelier
+```
+
+## Bundled scripts
+
+`bin/` ships the helpers Atelier calls. Atelier runs them from there; `claudeSessionsBin`, `qualifSyncBin` and `jiraTimeBin` point elsewhere if needed.
+
+| Script | Role |
+|---|---|
+| `bin/atelier` | Launcher |
+| `bin/claude-sessions` | Tracks running Claude sessions through Claude Code hooks, lists them and focuses their window |
+| `bin/jira-time` | Reads the week's Jira worklogs and logs time. Atelier passes it `jiraBase` and `jiraEnv` |
+| `bin/qualif-sync` | Rebuilds `qualif-<github-login>-<N>` from `origin/staging` plus your PRs, pushes it and starts the deployment |
+
+Atelier only sees Claude sessions once the hook is registered. Add this to `~/.claude/settings.json` for each of `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `Stop` and `StopFailure`, with the path to your clone:
+
+```json
+{ "hooks": [{ "type": "command", "command": "~/Dev/atelier/bin/claude-sessions hook", "timeout": 5 }] }
 ```
 
 On distributions that restrict unprivileged user namespaces (Ubuntu 24.04 and later), Electron's sandbox needs the AppArmor profile in `atelier.apparmor`. Fix the path inside it, then load it:
@@ -59,6 +73,7 @@ Defaults live in `src/config.js`. Override any of them in `~/.config/atelier/con
 
 ```json
 {
+  "devDir": "~/Dev",
   "repoDir": "~/Dev/modulo",
   "startPrompt": "/jira {key}",
   "reviewPrompt": "/review {number}",
