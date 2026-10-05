@@ -20,7 +20,7 @@ It is built for one setup (Linux with Hyprland, Ghostty and Sapling) and is not 
 - Node.js and npm
 - `claude` (Claude Code), `gh` (signed in), `sl` (Sapling), `git`
 - `kubectl` with access to the qualif cluster, for the qualif actions
-- `hyprctl`, `ghostty` and `uwsm-app`, to focus and open windows
+- To focus and open windows: `hyprctl`, `ghostty` and `uwsm-app` on Hyprland, or `swaymsg` and `alacritty` on Sway
 - `nvim`
 - Two helper scripts, not part of this repo: `~/.local/bin/jira-time` (Jira worklogs) and `~/.local/bin/claude-sessions` (lists and focuses running Claude sessions)
 - Jira credentials in `~/.config/jira-time/env`:
