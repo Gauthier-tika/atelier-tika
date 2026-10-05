@@ -299,6 +299,7 @@ function confirmRow(ticket, columns) {
 
 function ticketRow(ticket, columns) {
   const classes = ['ticket']
+  if (['orange', 'green'].includes(ticket.tone)) classes.push(`tone-${ticket.tone}`)
   if (ticket.blocked) classes.push('blocked')
   else if (ticket.attention) classes.push('attention')
   else if (ticket.session?.status === 'working') classes.push('working')

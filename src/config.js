@@ -23,6 +23,8 @@ const defaults = {
     mep: 'A MEP'
   },
   unassignedColumn: 'To Do',
+  hiddenColumns: [],
+  columnColors: {},
   qualifField: 'customfield_10253',
   qualifKubeContext: 'gke_tikamoon-qualif_europe-west1_cluster-tikamoon-qualif',
   githubOrg: 'Tikamoon',

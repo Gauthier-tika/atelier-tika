@@ -81,6 +81,8 @@ Defaults live in `src/config.js`. Override any of them in `~/.config/atelier/con
 }
 ```
 
+`hiddenColumns` drops tickets in those columns from the lists, for example `["Time Report"]`. `columnColors` tints a ticket by its column, with `orange` or `green`, for example `{ "In progress": "orange", "Recette PO": "green" }`. Both use the column names Atelier shows.
+
 | Variable | Effect |
 |---|---|
 | `ATELIER_CLAUDE_BIN` | Command used to start Claude instead of `claudeCommand` |
