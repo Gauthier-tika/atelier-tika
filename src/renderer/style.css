@@ -547,7 +547,7 @@ button {
 }
 
 .pane > h3 {
-  margin: 18px 0 0;
+  margin: 0;
   padding: 8px var(--gutter);
   background: var(--band);
   border-block: 1px solid var(--line);
@@ -558,6 +558,7 @@ button {
   gap: 8px;
 }
 
+.pane > h2 + h3 { border-top: 0; }
 .pane h3 .count { color: var(--comment); font-weight: 450; }
 
 .notice {

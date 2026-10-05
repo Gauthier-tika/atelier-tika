@@ -205,7 +205,7 @@ function claudeChip(ticket) {
     const title = withoutKey(ticket.previous.title || ticket.previous.prompt, ticket.key)
     return chip('', 'Resume', [title, `Last active ${ago(ticket.previous.updated)}. Resume it in Atelier, with nvim beside it`].filter(Boolean).join('\n'))
   }
-  return chip('', 'Start Claude', `Start Claude on ${ticket.key} in Atelier, with nvim beside it`)
+  return chip('', 'Start session', `Start a Claude session on ${ticket.key} in Atelier, with nvim beside it`)
 }
 
 function prLook(pr) {
