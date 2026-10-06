@@ -113,10 +113,12 @@ function phaseOf(jobs) {
 }
 
 async function qualifDeploys(config, branches) {
-  const repo = `${config.githubOrg}/${path.basename(config.repoDir)}`
+  const workflow = config.qualif?.workflow
+  if (!workflow) return {}
+  const repo = config.qualif.repo || `${config.githubOrg}/${path.basename(config.repoDir)}`
   const result = {}
   await Promise.all(branches.map(async branch => {
-    const [latest] = JSON.parse(await run('gh', ['run', 'list', '--repo', repo, '--workflow', 'deploy-qualif.yml', '--branch', branch,
+    const [latest] = JSON.parse(await run('gh', ['run', 'list', '--repo', repo, '--workflow', workflow, '--branch', branch,
       '--limit', '1', '--json', 'databaseId,status,conclusion,url,createdAt,headSha']))
     if (!latest) return
     const { jobs } = JSON.parse(await run('gh', ['run', 'view', String(latest.databaseId), '--repo', repo, '--json', 'jobs']))

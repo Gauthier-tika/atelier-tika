@@ -29,9 +29,8 @@ const defaults = {
   mineColumns: null,
   hiddenColumns: [],
   columnColors: {},
-  qualifField: 'customfield_10253',
-  verificationField: 'customfield_10451',
-  qualifKubeContext: 'gke_tikamoon-qualif_europe-west1_cluster-tikamoon-qualif',
+  verificationField: null,
+  qualif: null,
   githubOrg: 'Tikamoon',
   reviewRepos: [],
   devDir: '~/Dev',
@@ -67,6 +66,31 @@ function readUser() {
   }
 }
 
+const qualifDefaults = {
+  label: 'Qualif',
+  count: 10,
+  url: null,
+  branch: 'qualif-{login}-{n}',
+  base: 'main',
+  repo: null,
+  workflow: null,
+  inputs: {},
+  jiraField: null,
+  cache: null
+}
+
+function cleanQualif(user, legacyField) {
+  if (!user || typeof user !== 'object') return null
+  const { enabled, ...qualif } = { ...qualifDefaults, ...user }
+  qualif.count = Math.max(1, Math.min(99, Math.floor(Number(qualif.count)) || qualifDefaults.count))
+  qualif.inputs = qualif.inputs && typeof qualif.inputs === 'object' ? Object.fromEntries(Object.entries(qualif.inputs).map(([k, v]) => [k, String(v)])) : {}
+  qualif.jiraField ||= legacyField || null
+  const commands = (Array.isArray(qualif.cache?.commands) ? qualif.cache.commands : [])
+    .filter(command => Array.isArray(command) && command.length && command.every(part => typeof part === 'string'))
+  qualif.cache = commands.length ? { description: qualif.cache.description || '', commands } : null
+  return qualif
+}
+
 const stageIcons = { mepp: 'flask', mep: 'rocket' }
 
 const cleanFilters = filters => (Array.isArray(filters) ? filters : [])
@@ -82,6 +106,8 @@ function load() {
   config.filters = cleanFilters(config.filters)
   config.unassignedColumns = (Array.isArray(config.unassignedColumns) ? config.unassignedColumns : []).filter(c => typeof c === 'string')
   config.mineColumns = Array.isArray(config.mineColumns) ? config.mineColumns.filter(c => typeof c === 'string') : null
+  config.qualifSettings = cleanQualif(user.qualif, user.qualifField)
+  config.qualif = user.qualif?.enabled === false ? null : config.qualifSettings
   config.jiraBase = config.jiraBase ? String(config.jiraBase).replace(/\/+$/, '') : null
   config.jiraEnvLegacy = !user.jiraEnv && !fs.existsSync(jiraEnvFile) && fs.existsSync(legacyJiraEnvFile)
   if (config.jiraEnvLegacy) config.jiraEnv = legacyJiraEnvFile
@@ -110,7 +136,9 @@ function save(changes) {
   fs.renameSync(file + '.tmp', file)
 }
 
+const fill = (text, values) => text.replace(/\{(\w+)\}/g, (match, name) => Object.hasOwn(values, name) ? String(values[name]) : match)
+
 const editorArgs = (editor, directory) => editor.args.map(arg => arg.replaceAll('{dir}', directory))
 const terminalArgs = (terminal, values) => terminal.args.map(arg => arg.replace(/\{(dir|shell|command)\}/g, (_, name) => values[name]))
 
-module.exports = { load, save, home, expand, tilde, editors, editorArgs, terminalArgs, cleanFilters, jiraEnvFile }
+module.exports = { load, save, home, expand, tilde, editors, editorArgs, terminalArgs, cleanFilters, cleanQualif, qualifDefaults, readUser, jiraEnvFile, fill }

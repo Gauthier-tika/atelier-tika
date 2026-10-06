@@ -8,7 +8,7 @@ const claude = require('./claude')
 const launch = require('./launch')
 const wm = require('./wm')
 const { Timer } = require('./timer')
-const { compose, qualifPrs } = require('./compose')
+const { compose, qualifPrs, qualifBranch } = require('./compose')
 const { Qualifs } = require('./qualifs')
 const { run, onPath, env } = require('./run')
 const rebase = require('./rebase')
@@ -25,6 +25,7 @@ const shotPath = process.env.ATELIER_SHOT
 
 const data = {
   boards: null,
+  jiraFields: null,
   columns: null,
   tickets: null,
   unassigned: null,
@@ -52,7 +53,7 @@ let pushTimer = null
 const schedulePush = () => {
   if (!pushTimer) pushTimer = setTimeout(() => { pushTimer = null; push() }, 150)
 }
-const qualifs = new Qualifs(schedulePush)
+const qualifs = new Qualifs(schedulePush, config.qualif)
 const runs = new Runs(schedulePush)
 terminals.onExit = item => { if (item.runId) runs.terminalExited(item.id) }
 
@@ -93,9 +94,32 @@ function jiraSettings() {
   }
 }
 
-const current = () => ({ ...compose({ ...data, qualifs: qualifs.list(), runs: runs.list() }, timer.state, config, terminals.list()), workflows: config.workflows.map(({ id, label, description }) => ({ id, label, description: description || '' })), repos: repos().map(r => r.name), sapling: data.sapling, editor: { name: config.editor.name, mode: config.editor.mode }, editors: editorChoices(), terminal: { name: config.terminal.name, switching: Boolean(wm.desktop) }, devDir: configModule.tilde(config.devDir), reposPinned: Boolean(config.repos?.length), jira: jiraSettings() })
+const QUALIF_TEXT = ['label', 'url', 'branch', 'base', 'repo', 'workflow', 'jiraField']
 
-const qualifBranches = () => data.github ? qualifs.list().map(q => `qualif-${data.github.viewer}-${q.number}`) : []
+function qualifSettings() {
+  const settings = config.qualifSettings || configModule.cleanQualif({})
+  return {
+    enabled: Boolean(config.qualif),
+    values: { ...settings, inputs: Object.entries(settings.inputs).map(([key, value]) => `${key}=${value}`).join('\n') },
+    defaultRepo: `${config.githubOrg}/${path.basename(config.repoDir)}`,
+    cache: settings.cache?.commands.map(command => command.join(' ')) || [],
+    fields: data.jiraFields
+  }
+}
+
+function parseInputs(text) {
+  const inputs = {}
+  for (const line of String(text || '').split('\n').map(l => l.trim()).filter(Boolean)) {
+    const match = line.match(/^([\w-]+)\s*=\s*(.*)$/)
+    if (!match) throw new Error(`Write each workflow input as name=value, not "${line}"`)
+    inputs[match[1]] = match[2]
+  }
+  return inputs
+}
+
+const current = () => ({ ...compose({ ...data, qualifs: qualifs.list(), runs: runs.list() }, timer.state, config, terminals.list()), workflows: config.workflows.map(({ id, label, description }) => ({ id, label, description: description || '' })), repos: repos().map(r => r.name), sapling: data.sapling, editor: { name: config.editor.name, mode: config.editor.mode }, editors: editorChoices(), terminal: { name: config.terminal.name, switching: Boolean(wm.desktop) }, devDir: configModule.tilde(config.devDir), reposPinned: Boolean(config.repos?.length), jira: jiraSettings(), qualifSettings: qualifSettings() })
+
+const qualifBranches = () => data.github ? qualifs.list().map(q => qualifBranch(config.qualif, data.github.viewer, q.number)).filter(Boolean) : []
 
 function push() {
   send('state', current())
@@ -118,8 +142,9 @@ async function load(name, task, apply) {
 
 let jiraLoading = null
 const loaders = {
-  jira: (reconcile = []) => jiraLoading = load('jira', async () => [await jira.boards(), await jira.boardColumns(), await jira.tickets(reconcile), await jira.unassigned()], ([boards, columns, tickets, unassigned]) => {
+  jira: (reconcile = []) => jiraLoading = load('jira', async () => [await jira.boards(), await jira.boardColumns(), await jira.tickets(reconcile), await jira.unassigned(), await jira.optionFields().catch(() => null)], ([boards, columns, tickets, unassigned, fields]) => {
     data.boards = boards
+    data.jiraFields = fields
     data.columns = columns
     data.tickets = tickets
     data.unassigned = unassigned.filter(item => !tickets.some(t => t.key === item.key))
@@ -274,6 +299,39 @@ const actions = {
     if (!Array.isArray(filters) || filters.some(f => !String(f?.label || '').trim())) throw new Error('Give every filter a name')
     config.filters = configModule.cleanFilters(filters)
     configModule.save({ filters: config.filters })
+    push()
+  },
+
+  qualifSetting({ field, value }) {
+    const raw = { ...(configModule.readUser().qualif || {}) }
+    if (field === 'enabled') {
+      if (value) delete raw.enabled
+      else raw.enabled = false
+    } else if (field === 'count') {
+      const count = Number(value)
+      if (!Number.isInteger(count) || count < 1 || count > 99) throw new Error('The number of qualifs goes from 1 to 99')
+      raw.count = count
+    } else if (field === 'inputs') {
+      const inputs = parseInputs(value)
+      if (Object.keys(inputs).length) raw.inputs = inputs
+      else delete raw.inputs
+    } else if (QUALIF_TEXT.includes(field)) {
+      const text = String(value ?? '').trim()
+      if (text) raw[field] = text
+      else delete raw[field]
+    } else throw new Error(`Unknown qualif setting ${field}`)
+    configModule.save({ qualif: raw })
+    config.qualifSettings = configModule.cleanQualif(raw)
+    config.qualif = raw.enabled === false ? null : config.qualifSettings
+    qualifs.settings = config.qualif
+    if (['enabled', 'jiraField'].includes(field)) {
+      jira.qualifOptions = null
+      loaders.jira()
+    }
+    if (['enabled', 'branch', 'repo', 'workflow'].includes(field)) {
+      data.deploys = null
+      loaders.deploys()
+    }
     push()
   },
 
@@ -515,7 +573,7 @@ const actions = {
 
   qualifRemove({ number }) {
     qualifs.remove(number)
-    return `Removed qualif ${number} from Atelier. Its branch and deployment are not touched`
+    return `Removed ${config.qualif.label} ${number} from Atelier. Its branch and deployment are not touched`
   },
 
   qualifAssign({ number, key }) {
@@ -528,39 +586,51 @@ const actions = {
   },
 
   async qualifSync({ number, deploy }) {
+    const settings = config.qualif
+    const name = `${settings?.label} ${number}`
+    qualifs.get(number)
     await loaders.github()
     if (data.errors.github) throw new Error(`GitHub did not answer (${data.errors.github}), try again`)
     const rows = qualifPrs(qualifs.get(number).tickets, tickets(), data.github.mine, path.basename(config.repoDir))
     const missing = rows.filter(row => !row.prs.length && !row.merged).map(row => row.key)
     if (missing.length) throw new Error(`${missing.join(', ')} ${missing.length > 1 ? 'have' : 'has'} no open pull request in ${path.basename(config.repoDir)}. Remove ${missing.length > 1 ? 'them' : 'it'} or open the PR first`)
     const prs = rows.flatMap(row => row.prs.map(pr => ({ number: pr.number, head: pr.head, key: row.key })))
+    if (deploy && !settings.workflow) throw new Error(`No deploy workflow is set up for ${settings.label.toLowerCase()}s in config.json`)
+    const args = [
+      String(number), ...prs.map(pr => String(pr.number)),
+      '--base', settings.base, '--branch', settings.branch, '--max', String(settings.count),
+      ...(settings.workflow ? ['--workflow', settings.workflow, ...Object.entries(settings.inputs).flatMap(([key, value]) => ['-f', `${key}=${value}`])] : []),
+      deploy ? '--deploy' : '--dry-run'
+    ]
     const run = await qualifs.sync(number, {
       bin: config.qualifSyncBin,
       cwd: config.repoDir,
+      args,
       prs,
       deploy: Boolean(deploy),
       tickets: rows.filter(row => row.prs.length).map(row => row.key)
     })
-    if (!run.ok) throw new Error(`qualif-sync failed on qualif ${number}, see its output`)
-    if (!deploy) return `Dry run done for qualif ${number}, nothing pushed`
+    if (!run.ok) throw new Error(`qualif-sync failed on ${name}, see its output`)
+    if (!deploy) return `Dry run done for ${name}, nothing pushed`
     setTimeout(() => loaders.deploys(), 5000)
-    const stale = rows.filter(row => row.prs.length && row.jiraQualif !== Number(number)).map(row => row.key)
+    const stale = settings.jiraField ? rows.filter(row => row.prs.length && row.jiraQualif !== Number(number)).map(row => row.key) : []
     const refused = new Map()
     for (const key of stale) await jira.setQualif(key, Number(number)).catch(error => refused.set(key, error.message))
     if (stale.length) loaders.jira()
     const updated = stale.filter(key => !refused.has(key))
     return [
-      `Pushed and started the deployment to qualif${number}`,
-      updated.length ? `set Qualif ${number} in Jira on ${updated.join(', ')}` : '',
+      `Pushed and started the deployment to ${name}`,
+      updated.length ? `set ${name} in Jira on ${updated.join(', ')}` : '',
       refused.size ? `Jira refused ${[...refused].map(([key, why]) => `${key} (${why})`).join(', ')}` : ''
     ].filter(Boolean).join('; ')
   },
 
   async qualifCacheClear({ number }) {
-    const run = await qualifs.clearCache(number, { cwd: config.repoDir, context: config.qualifKubeContext })
-    if (run.ok) return `Cleared the page cache of qualif${number}`
-    if (/gcloud|credentials|refresh token|reauth|Unauthorized/i.test(run.output)) throw new Error('kubectl could not sign in. Run gcloud auth login in a terminal, then try again')
-    throw new Error(`Clearing the cache of qualif${number} failed, see its output`)
+    const name = `${config.qualif?.label} ${number}`
+    const run = await qualifs.clearCache(number, { cwd: config.repoDir })
+    if (run.ok) return `Cleared the cache of ${name}`
+    if (/gcloud/i.test(run.output) && /credentials|refresh token|reauth|Unauthorized/i.test(run.output)) throw new Error('gcloud could not sign in. Run gcloud auth login in a terminal, then try again')
+    throw new Error(`Clearing the cache of ${name} failed, see its output`)
   },
 
   async log({ key, seconds }) {

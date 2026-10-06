@@ -4,7 +4,7 @@ const { run, env } = require('./run')
 
 function qualifNumber(value) {
   const text = typeof value === 'string' ? value : value?.value || ''
-  const match = text.match(/qualif\s*(\d+)/i)
+  const match = text.match(/(\d+)/)
   return match ? Number(match[1]) : null
 }
 
@@ -25,6 +25,7 @@ class Jira {
     this.boardList = null
     this.qualifOptions = null
     this.accountId = null
+    this.selectFields = null
   }
 
   account() {
@@ -84,6 +85,16 @@ class Jira {
     return text ? JSON.parse(text) : {}
   }
 
+  async optionFields() {
+    if (this.selectFields) return this.selectFields
+    const fields = await this.request('GET', '/rest/api/3/field')
+    this.selectFields = fields
+      .filter(field => field.custom && ['option', 'option-with-child'].includes(field.schema?.type))
+      .map(field => ({ id: field.id, name: field.name }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+    return this.selectFields
+  }
+
   async discoverFlagField() {
     if (this.flagField) return this.flagField
     const fields = await this.request('GET', '/rest/api/3/field')
@@ -130,7 +141,8 @@ class Jira {
 
   async tickets(reconcile = []) {
     const flagField = await this.discoverFlagField()
-    const fields = ['summary', 'status', 'issuetype', 'priority', 'timespent', 'updated', 'parent', flagField, this.config.qualifField, this.config.verificationField]
+    const qualifField = this.config.qualif?.jiraField
+    const fields = ['summary', 'status', 'issuetype', 'priority', 'timespent', 'updated', 'parent', flagField, qualifField, this.config.verificationField].filter(Boolean)
     const issues = []
     let nextPageToken
     do {
@@ -161,8 +173,8 @@ class Jira {
         status: { id: f.status.id, name: f.status.name, category: f.status.statusCategory?.key },
         epic: f.parent ? { key: f.parent.key, summary: f.parent.fields?.summary || '' } : null,
         blocked: Array.isArray(flag) && flag.length > 0,
-        qualif: qualifNumber(f[this.config.qualifField]),
-        verification: f[this.config.verificationField]?.value || null,
+        qualif: qualifField ? qualifNumber(f[qualifField]) : null,
+        verification: this.config.verificationField ? f[this.config.verificationField]?.value || null : null,
         timeSpent: f.timespent || 0,
         updated: f.updated
       }
@@ -220,15 +232,16 @@ class Jira {
   }
 
   async setQualif(key, number) {
-    const field = this.config.qualifField
+    const field = this.config.qualif?.jiraField
+    if (!field) return
     if (!this.qualifOptions) {
       const meta = await this.request('GET', `/rest/api/3/issue/${key}/editmeta`)
       const allowed = meta.fields?.[field]?.allowedValues || []
-      if (!allowed.length) throw new Error(`The Qualif field cannot be edited on ${key}`)
+      if (!allowed.length) throw new Error(`The ${this.config.qualif.label} field cannot be edited on ${key}`)
       this.qualifOptions = Object.fromEntries(allowed.map(option => [qualifNumber(option.value), option.id]))
     }
     const id = this.qualifOptions[number]
-    if (!id) throw new Error(`Jira has no Qualif ${number} option`)
+    if (!id) throw new Error(`Jira has no ${this.config.qualif.label} ${number} option`)
     await this.request('PUT', `/rest/api/3/issue/${key}`, {
       body: { fields: { [field]: { id } } }
     })

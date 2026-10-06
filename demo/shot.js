@@ -15,6 +15,18 @@ const HOUR = 60 * MIN
 const DAY = 24 * HOUR
 
 const realConfig = require(path.join(src, 'config'))
+const demoQualif = {
+  label: 'Qualif',
+  count: 15,
+  url: 'https://qualif{n}.example.com',
+  branch: 'qualif-{login}-{n}',
+  base: 'staging',
+  repo: null,
+  workflow: 'deploy-qualif.yml',
+  inputs: { environment: 'qualif{n}' },
+  jiraField: 'customfield_10000',
+  cache: { description: '', commands: [['kubectl', '-n', 'qualif{n}', 'exec', 'deploy/web', '--', 'bin/console', 'cache:clear']] }
+}
 stub('config', {
   ...realConfig,
   load: () => ({
@@ -26,6 +38,9 @@ stub('config', {
       { label: 'À MEP', columns: ['A MEP'], icon: 'rocket' }
     ],
     unassignedColumns: ['To Do'],
+    verificationField: null,
+    qualif: demoQualif,
+    qualifSettings: demoQualif,
     githubOrg: 'acme',
     repoDir: path.join(os.homedir(), 'Dev/shop'),
     repos: ['~/Dev/shop', '~/Dev/atelier', '~/Dev/infra'],
@@ -73,6 +88,7 @@ stub('jira', {
   Jira: class {
     account = () => ({ email: 'you@example.com', token: 'demo' })
     boards = async () => [{ id: 1, name: 'Shop board', project: 'SHOP' }]
+    optionFields = async () => [{ id: 'customfield_10000', name: 'Qualif' }]
     boardColumns = async () => columns
     tickets = async () => tickets
     unassigned = async () => [
@@ -164,7 +180,6 @@ stub('timer', {
 })
 
 stub('qualifs', {
-  NUMBERS: Array.from({ length: 15 }, (_, i) => i + 1),
   Qualifs: class {
     list = () => [{ number: 4, tickets: ['SHOP-469'], last: null, current: null }]
   }

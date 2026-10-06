@@ -3,15 +3,15 @@ const os = require('node:os')
 const path = require('node:path')
 const { spawn } = require('node:child_process')
 const { env } = require('./run')
+const { fill } = require('./config')
 
 const file = path.join(os.homedir(), '.local/state/atelier/qualifs.json')
 const OUTPUT_BYTES = 64 * 1024
-const CACHE_FAMILIES = ['pcache_grid', 'pcache_product', 'pcache_page']
-const NUMBERS = Array.from({ length: 15 }, (_, i) => i + 1)
 
 class Qualifs {
-  constructor(onChange) {
+  constructor(onChange, settings) {
     this.onChange = onChange
+    this.settings = settings
     this.items = {}
     this.running = null
     try {
@@ -26,19 +26,22 @@ class Qualifs {
   }
 
   numberOf(value) {
+    if (!this.settings) throw new Error('No qualif is set up in config.json')
     const n = Number(value)
-    if (!NUMBERS.includes(n)) throw new Error('Qualifs go from 1 to 15')
+    if (!Number.isInteger(n) || n < 1 || n > this.settings.count) throw new Error(`${this.settings.label}s go from 1 to ${this.settings.count}`)
     return String(n)
   }
 
   get(number) {
     const item = this.items[this.numberOf(number)]
-    if (!item) throw new Error(`Qualif ${number} is not in your list`)
+    if (!item) throw new Error(`${this.settings.label} ${number} is not in your list`)
     return item
   }
 
   list() {
+    if (!this.settings) return []
     return Object.entries(this.items)
+      .filter(([number]) => Number(number) <= this.settings.count)
       .map(([number, item]) => ({ number: Number(number), ...item, current: this.running?.number === Number(number) ? this.running : null }))
       .sort((a, b) => a.number - b.number)
   }
@@ -52,7 +55,7 @@ class Qualifs {
 
   remove(number) {
     const key = this.numberOf(number)
-    if (this.running?.number === Number(key)) throw new Error(`Qualif ${key} is syncing`)
+    if (this.running?.number === Number(key)) throw new Error(`${this.settings.label} ${key} is syncing`)
     delete this.items[key]
     this.save()
     this.onChange()
@@ -72,9 +75,8 @@ class Qualifs {
     this.onChange()
   }
 
-  sync(number, { bin, cwd, prs, deploy, tickets }) {
-    if (!prs.length) throw new Error('No open pull request to put on this qualif')
-    const args = [String(number), ...prs.map(pr => String(pr.number)), deploy ? '--deploy' : '--dry-run']
+  sync(number, { bin, cwd, args, prs, deploy, tickets }) {
+    if (!prs.length) throw new Error(`No open pull request to put on ${this.settings.label} ${number}`)
     return this.exec(number, {
       kind: deploy ? 'sync' : 'preview',
       cwd,
@@ -84,21 +86,20 @@ class Qualifs {
     })
   }
 
-  clearCache(number, { cwd, context }) {
-    if (!/_cluster-tikamoon-qualif$/.test(context)) throw new Error(`${context} is not the qualif cluster`)
+  clearCache(number, { cwd }) {
     const n = this.numberOf(number)
-    const command = [`--context=${context}`, '-n', `qualif${n}-modulo`, 'exec', 'deploy/admin-deployment', '-c', 'php', '--', 'bin/console', 'app:template_cache:clear']
+    if (!this.settings.cache) throw new Error('No cache command is set up for qualifs in config.json')
     return this.exec(number, {
       kind: 'cache',
       cwd,
-      steps: CACHE_FAMILIES.map(family => ['kubectl', [...command, `QLF${n}${family}`]]),
+      steps: this.settings.cache.commands.map(([command, ...args]) => [fill(command, { n }), args.map(arg => fill(arg, { n }))]),
       done: (item, run) => { item.cacheClearedAt = run.at }
     })
   }
 
   exec(number, { kind, cwd, steps, record = {}, done }) {
     const item = this.get(number)
-    if (this.running) throw new Error(`Qualif ${this.running.number} is busy, wait for it to finish`)
+    if (this.running) throw new Error(`${this.settings.label} ${this.running.number} is busy, wait for it to finish`)
     const run = { number: Number(number), at: Date.now(), kind, deploy: kind === 'sync', ...record, output: '', ok: null }
     this.running = run
     this.onChange()
@@ -136,4 +137,4 @@ class Qualifs {
   }
 }
 
-module.exports = { Qualifs, NUMBERS }
+module.exports = { Qualifs }

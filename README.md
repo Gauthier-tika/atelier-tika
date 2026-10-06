@@ -12,7 +12,7 @@ It is built for one setup (Linux with Hyprland, Ghostty and Sapling) and is not 
 - **Claude sessions**: start or resume a Claude Code session on a ticket in an embedded terminal. Sessions already running in another terminal are shown too, and on Hyprland or Sway Atelier switches to their window.
 - **Splits**: Ghostty-style panes inside a session. **Open nvim** puts nvim, or the [editor](#editor) you set, on the left of Claude, and extra shells split beside it. A pane closes when its program exits.
 - **PRs and reviews**: GitHub PRs and their checks, rebase a ticket's PR, start a Claude review of a PR.
-- **Qualifs**: which qualif environment holds which ticket, sync the Jira Qualif field, clear a qualif's caches.
+- **Qualifs**: which test environment holds which ticket, rebuild and deploy its branch, sync a Jira field, clear its cache. See [Qualifs](#qualifs).
 - **Workflows**: start a Claude Code run from a button, follow its stages, answer its questions from Atelier and see its outcome and pull request. See [Workflows](#workflows).
 - **Repo tools**: open Claude, a shell or your editor in any repo under `~/Dev`, and `sl web` when Sapling is installed. Pick another folder under **Settings**, saved as `devDir`.
 
@@ -21,7 +21,6 @@ It is built for one setup (Linux with Hyprland, Ghostty and Sapling) and is not 
 - Node.js and npm
 - `claude` (Claude Code), `gh` (signed in), `git`, `python3`, `bash` 4 or later
 - An editor: `nvim` by default, any other through `editor` (see [Editor](#editor))
-- `kubectl` with access to the qualif cluster, for the qualif actions
 - Optional: `sl` (Sapling), for `sl web`; without it Atelier uses git
 - Optional, to switch windows: `hyprctl` on Hyprland or `swaymsg` on Sway
 - Optional, a [terminal](#terminal): Ghostty (through `uwsm-app` on Hyprland) by default, Alacritty on Sway
@@ -56,7 +55,7 @@ cp atelier.desktop ~/.local/share/applications/
 | `bin/claude-sessions` | Tracks running Claude sessions through Claude Code hooks, lists them and focuses their window |
 | `bin/jira-time` | Reads the week's Jira worklogs and logs time. Atelier passes it `jiraBase`, `jiraEnv` and `dailyHours` |
 | `bin/atelier-run` | Lets a workflow run report its stage, ticket, questions and outcome to Atelier |
-| `bin/qualif-sync` | Rebuilds `qualif-<github-login>-<N>` from `origin/staging` plus your PRs, pushes it and starts the deployment |
+| `bin/qualif-sync` | Rebuilds a qualif branch from its base plus your PRs, pushes it and starts the deploy workflow. Atelier passes it the `qualif` settings |
 
 Atelier only sees Claude sessions once the hook is registered. Add this to `~/.claude/settings.json` for each of `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `Stop` and `StopFailure`, with the path to your clone:
 
@@ -125,6 +124,44 @@ These are saved in `config.json`, by the column names Jira gives them:
 ```
 
 `icon` is optional and only set in that file; without it a filter gets a funnel. `dailyHours`, 7 by default, sets the daily time target.
+
+### Qualifs
+
+A qualif is a test environment that gets its own branch, rebuilt from a base branch plus the open pull requests of the tickets you put on it, in `repoDir`. Turn the Qualifs tab on and set it up under **Settings**, which saves everything but the cache commands as `qualif` in `config.json`. `"enabled": false` hides the tab and keeps the settings. The cache commands are only set in that file:
+
+```json
+{
+  "qualif": {
+    "count": 15,
+    "url": "https://qualif{n}.example.com",
+    "base": "staging",
+    "workflow": "deploy-qualif.yml",
+    "inputs": { "environment": "qualif{n}" },
+    "jiraField": "customfield_10253",
+    "cache": {
+      "description": "Clear the page cache of qualif {n}?",
+      "commands": [["kubectl", "-n", "qualif{n}", "exec", "deploy/web", "--", "bin/console", "cache:clear"]]
+    }
+  }
+}
+```
+
+`{n}` becomes the qualif number and `{login}` your GitHub login. Every key is optional:
+
+| Key | Default | Effect |
+|---|---|---|
+| `label` | `Qualif` | Name shown in Atelier |
+| `count` | `10` | Qualifs go from 1 to this number |
+| `url` | none | Page each qualif title opens |
+| `branch` | `qualif-{login}-{n}` | Branch rebuilt and force-pushed for each qualif |
+| `base` | `main` | Branch the qualif branch starts from |
+| `repo` | `githubOrg`/name of `repoDir` | GitHub repository that runs the workflow |
+| `workflow` | none | GitHub Actions workflow run on the pushed branch, whose last run Atelier shows. Without it, Sync only pushes |
+| `inputs` | none | Inputs passed to that workflow |
+| `jiraField` | none | Jira select or cascading select field holding the qualif, set on the tickets after a deploy. Atelier reads the number in each option's name |
+| `cache` | none | Commands behind **Clear the cache**, run one after the other from `repoDir`, with the confirmation shown before |
+
+`verificationField` names another Jira field whose value a ticket shows as a tag.
 
 ### Theme
 

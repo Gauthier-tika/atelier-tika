@@ -1,4 +1,5 @@
 const path = require('node:path')
+const { fill } = require('./config')
 
 const KEY = /\b[A-Z][A-Z0-9]+-\d+\b/g
 
@@ -33,7 +34,11 @@ const sameSync = (a, b) =>
   a.tickets.join() === b.tickets.join() &&
   a.prs.map(pr => `${pr.number}@${pr.head}`).join() === b.prs.map(pr => `${pr.number}@${pr.head}`).join()
 
+const qualifBranch = (settings, login, n) => login || !settings.branch.includes('{login}') ? fill(settings.branch, { login, n }) : null
+
 function composeQualifs(data, config) {
+  const settings = config.qualif
+  if (!settings) return null
   const repo = path.basename(config.repoDir)
   const prs = data.github?.mine || []
   const tickets = data.tickets || []
@@ -42,14 +47,15 @@ function composeQualifs(data, config) {
     const rows = qualifPrs(item.tickets, tickets, prs, repo)
     const toSync = rows.flatMap(row => row.prs.map(pr => ({ number: pr.number, head: pr.head, key: row.key })))
     const wanted = { tickets: rows.filter(row => row.prs.length).map(row => row.key), prs: toSync }
+    const branch = qualifBranch(settings, viewer, item.number)
     return {
       number: item.number,
-      url: `https://qualif${item.number}.tikamoon.com`,
-      branch: viewer ? `qualif-${viewer}-${item.number}` : null,
+      url: settings.url ? fill(settings.url, { n: item.number }) : null,
+      branch,
       tickets: rows,
       toSync,
       synced: item.synced || null,
-      deploy: (viewer && data.deploys?.[`qualif-${viewer}-${item.number}`]) || null,
+      deploy: (branch && data.deploys?.[branch]) || null,
       cacheClearedAt: item.cacheClearedAt || null,
       upToDate: Boolean(item.synced && data.github && sameSync(item.synced, wanted)),
       last: item.last || null,
@@ -58,8 +64,13 @@ function composeQualifs(data, config) {
   })
   const used = new Set(items.map(item => item.number))
   return {
+    label: settings.label,
+    base: settings.base,
+    deploys: Boolean(settings.workflow),
+    jira: Boolean(settings.jiraField),
+    cache: settings.cache ? { description: settings.cache.description, commands: settings.cache.commands.map(command => command.join(' ')) } : null,
     items,
-    free: Array.from({ length: 15 }, (_, i) => i + 1).filter(n => !used.has(n)),
+    free: Array.from({ length: settings.count }, (_, i) => i + 1).filter(n => !used.has(n)),
     candidates: tickets
       .filter(ticket => prs.some(pr => pr.repo === repo && pr.state === 'OPEN' && keysOf(pr).includes(ticket.key)))
       .map(ticket => ({ key: ticket.key, summary: ticket.summary, qualif: ticket.qualif ?? null })),
@@ -194,4 +205,4 @@ function compose(data, timer, config, terminals = []) {
   }
 }
 
-module.exports = { compose, qualifPrs, keysOf }
+module.exports = { compose, qualifPrs, qualifBranch, keysOf }

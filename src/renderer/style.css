@@ -1704,7 +1704,7 @@ body:not([data-view="list"]) .panes { display: none; }
 .jira-form label { display: grid; gap: 4px; }
 .jira-form .hint { flex-basis: 100%; color: var(--comment); font-size: var(--step--1); }
 
-.jira-form input, .filter-name, .setting-row select {
+.jira-form input, .filter-name, .setting-row select, .setting-field :is(input, select, textarea) {
   min-width: 0;
   padding: 5px 8px;
   border-radius: 5px;
@@ -1715,8 +1715,8 @@ body:not([data-view="list"]) .panes { display: none; }
 }
 
 .jira-form input { width: 26ch; }
-.jira-form input:hover, .filter-name:hover, .setting-row select:hover { border-color: var(--muted); }
-.jira-form input:focus, .filter-name:focus { outline: 2px solid var(--cyan); outline-offset: 0; border-color: transparent; }
+.jira-form input:hover, .filter-name:hover, .setting-row select:hover, .setting-field :is(input, select, textarea):hover { border-color: var(--muted); }
+.jira-form input:focus, .filter-name:focus, .setting-field :is(input, select, textarea):focus { outline: 2px solid var(--cyan); outline-offset: 0; border-color: transparent; }
 
 .column-picks {
   display: flex;
@@ -1756,3 +1756,22 @@ button.link {
   text-decoration: underline;
   cursor: pointer;
 }
+
+.setting-row.toggle { flex-wrap: nowrap; cursor: pointer; }
+.setting-row.toggle input { accent-color: var(--cyan); margin: 0; flex: none; }
+
+.setting-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px 20px;
+  padding: 0 var(--gutter) 4px;
+}
+
+.setting-field { display: grid; gap: 4px; align-content: start; }
+.setting-field > .t { color: var(--comment); }
+.setting-field .hint { color: var(--comment); font-size: var(--step--1); }
+.setting-field textarea { resize: vertical; font-variation-settings: "MONO" 1; }
+.setting-field select:disabled { opacity: 0.55; }
+
+.cache-commands .code { padding: 2px 6px; border-radius: 4px; background: var(--bg); overflow-wrap: anywhere; }
+.cache-commands .hint { flex-basis: 100%; }

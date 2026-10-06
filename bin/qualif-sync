@@ -4,20 +4,26 @@ export GIT_PAGER=cat PAGER=cat LC_ALL=C
 
 usage() {
     cat <<'EOF'
-usage: qualif-sync <qualif-number> [PR...] [-x PR]... [--dry-run] [--deploy]
+usage: qualif-sync <qualif-number> [PR...] [-x PR]... [options] [--dry-run | --deploy]
 
-Rebuild the branch qualif-<github-login>-<N> from origin/staging plus a copy of
-the commits of each PR and push it; --deploy then deploys it to qualif<N>.
-Each qualif has its own branch, so its image tag is not shared with another qualif.
-The PR commits, their branches and the working copy are not touched.
+Rebuild the qualif branch from origin/<base> plus a copy of the commits of each
+PR and push it; --deploy then runs the deploy workflow on it. Each qualif has
+its own branch, so its image tag is not shared with another qualif. The PR
+commits, their branches and the working copy are not touched.
 
 It also reports the PRs that change the same files (re-check them together
-when one of them leaves qualif) and the PRs that do not apply alone on staging.
+when one of them leaves qualif) and the PRs that do not apply alone on the base.
 
-  PR...          PRs to include, in this order (default: all your open PRs)
-  -x, --except   leave this PR out (repeatable)
-  --dry-run      build the branch and show it, push nothing
-  --deploy       also run deploy-qualif.yml on the pushed branch
+  PR...             PRs to include, in this order (default: all your open PRs)
+  -x, --except PR   leave this PR out (repeatable)
+  --base BRANCH     branch to start from (default: main)
+  --branch NAME     branch to push; {login} and {n} are replaced
+                    (default: qualif-{login}-{n})
+  --max N           highest qualif number (default: 99)
+  --workflow FILE   GitHub Actions workflow that deploys the branch
+  -f, --input K=V   input passed to that workflow, {n} replaced (repeatable)
+  --dry-run         build the branch and show it, push nothing
+  --deploy          also run the workflow on the pushed branch
 EOF
 }
 
@@ -28,9 +34,19 @@ prs=()
 excluded=()
 dry_run=0
 deploy=0
+base_branch=main
+branch_pattern='qualif-{login}-{n}'
+max=99
+workflow=""
+inputs=()
 while (($#)); do
     case $1 in
         -x|--except) excluded+=("${2:?missing PR number after $1}"); shift 2 ;;
+        --base) base_branch=${2:?missing branch after $1}; shift 2 ;;
+        --branch) branch_pattern=${2:?missing name after $1}; shift 2 ;;
+        --max) max=${2:?missing number after $1}; shift 2 ;;
+        --workflow) workflow=${2:?missing workflow after $1}; shift 2 ;;
+        -f|--input) inputs+=("${2:?missing KEY=VALUE after $1}"); shift 2 ;;
         --dry-run) dry_run=1; shift ;;
         --deploy) deploy=1; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -39,15 +55,19 @@ while (($#)); do
     esac
 done
 
-[[ $qualif =~ ^([1-9]|1[0-5])$ ]] || { usage >&2; exit 2; }
+[[ $max =~ ^[1-9][0-9]*$ ]] || die "--max takes a positive number"
+[[ $qualif =~ ^[1-9][0-9]*$ ]] && ((qualif <= max)) || { usage >&2; exit 2; }
 ((dry_run && deploy)) && die "--dry-run and --deploy cannot be combined"
+((deploy)) && [[ -z $workflow ]] && die "--deploy needs --workflow"
 
 cd "$(git rev-parse --show-toplevel)"
-branch="qualif-$(gh api user --jq .login)-$qualif"
-environment="qualif$qualif"
+branch=${branch_pattern//\{n\}/$qualif}
+[[ $branch == *"{login}"* ]] && branch=${branch//\{login\}/$(gh api user --jq .login)}
+git check-ref-format --branch "$branch" >/dev/null || die "$branch is not a valid branch name"
+[[ $branch == "$base_branch" ]] && die "the qualif branch cannot be the base branch"
 
-echo "Fetching origin/staging..."
-git fetch -q origin staging
+echo "Fetching origin/$base_branch..."
+git fetch -q origin "$base_branch"
 
 if ((${#prs[@]} == 0)); then
     mapfile -t prs < <(gh pr list --author @me --state open --json number --jq '.[].number' | sort -n)
@@ -76,7 +96,7 @@ applies_alone() {
     done
 }
 
-base=$(git rev-parse origin/staging)
+base=$(git rev-parse "origin/$base_branch")
 tip=$base
 included=()
 summary=()
@@ -111,7 +131,7 @@ for pr in "${selected[@]}"; do
         tip=$(copy_commit "$commit" "$tip") && continue
         applies_alone "$head_oid" \
             && die "PR #$pr ($head_ref) conflicts with the PRs before it; leave one of them out with -x, or stack them" \
-            || die "PR #$pr ($head_ref) conflicts with origin/staging; rebase it, or leave it out with -x $pr"
+            || die "PR #$pr ($head_ref) conflicts with origin/$base_branch; rebase it, or leave it out with -x $pr"
     done
 
     pr_files[$pr]=$(for commit in "${commits[@]}"; do git diff-tree --no-commit-id --name-only -r "$commit"; done | sort -u)
@@ -122,7 +142,7 @@ for pr in "${selected[@]}"; do
 done
 
 echo
-echo "$branch = origin/staging +"
+echo "$branch = origin/$base_branch +"
 printf '%s\n' "${summary[@]}"
 echo
 git log --reverse --format='  %h %s' "$base..$tip"
@@ -151,7 +171,7 @@ echo "PRs changing the same files (re-check them together if one leaves qualif):
 if ((${#coupled[@]})); then printf '%s\n' "${coupled[@]}"; else echo "  none"; fi
 if ((${#not_alone[@]})); then
     echo
-    echo "PRs that do not apply alone on origin/staging (they depend on a PR before them):"
+    echo "PRs that do not apply alone on origin/$base_branch (they depend on a PR before them):"
     printf '  #%s\n' "${not_alone[@]}"
 fi
 echo
@@ -164,11 +184,12 @@ fi
 git push -q -f origin "$tip:refs/heads/$branch"
 echo "Pushed $(git rev-parse --short "$tip") to $branch."
 
-deploy_cmd=(gh workflow run deploy-qualif.yml --ref "$branch" -f "environment=$environment")
+[[ -n $workflow ]] || exit 0
+deploy_cmd=(gh workflow run "$workflow" --ref "$branch")
+for input in "${inputs[@]}"; do deploy_cmd+=(-f "${input//\{n\}/$qualif}"); done
 if ((deploy)); then
     "${deploy_cmd[@]}"
-    echo "Deployment to $environment started: gh run list --workflow deploy-qualif.yml --limit 1"
+    echo "Deployment of $branch started: gh run list --workflow $workflow --branch $branch --limit 1"
 else
     echo "To deploy:  ${deploy_cmd[*]}"
 fi
-echo "After the deployment, clear the Redis cache on $environment or the PO may see stale fragments."

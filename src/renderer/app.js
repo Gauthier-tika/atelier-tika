@@ -47,7 +47,8 @@ const ui = {
   tab: 'mine',
   settingsTab: (() => {
     try {
-      return localStorage.getItem('atelier.settingsTab') === 'tickets' ? 'tickets' : 'global'
+      const saved = localStorage.getItem('atelier.settingsTab')
+      return ['tickets', 'qualifs'].includes(saved) ? saved : 'global'
     } catch {
       return 'global'
     }
@@ -437,10 +438,14 @@ function renderSettings(state) {
     <div class="subtabs" role="tablist" aria-label="Settings sections">${SETTINGS_TABS.map(tab => `
       <button role="tab" id="settings-tab-${tab.id}" aria-selected="${tab.id === section}" aria-controls="settings-body" data-act="settings-tab" data-section="${tab.id}">${tab.label}</button>`).join('')}
     </div>
-    <div id="settings-body" role="tabpanel" aria-labelledby="settings-tab-${section}">${section === 'tickets' ? jiraSettings(state) : globalSettings(state)}</div>`
+    <div id="settings-body" role="tabpanel" aria-labelledby="settings-tab-${section}">${(SETTINGS_TABS.find(tab => tab.id === section) || SETTINGS_TABS[0]).render(state)}</div>`
 }
 
-const SETTINGS_TABS = [{ id: 'global', label: 'Global' }, { id: 'tickets', label: 'Tickets' }]
+const SETTINGS_TABS = [
+  { id: 'global', label: 'Global', render: state => globalSettings(state) },
+  { id: 'tickets', label: 'Tickets', render: state => jiraSettings(state) },
+  { id: 'qualifs', label: 'Qualifs', render: state => qualifSettings(state) }
+]
 
 function globalSettings(state) {
   const current = document.documentElement.dataset.theme || 'default'
@@ -468,6 +473,54 @@ function globalSettings(state) {
         : state.repos.length ? `${state.repos.length} ${state.repos.length === 1 ? 'repository' : 'repositories'}, each a folder right inside it with a .git or .sl directory`
         : 'No repository: Atelier looks for folders right inside it with a .git or .sl directory'}</span>
     </div>`
+}
+
+function qualifField({ field, label, value, placeholder = '', hint = '', type = 'text' }) {
+  return `<label class="setting-field"><span class="t">${esc(label)}</span>
+    <input type="${type}" data-qualif-field="${field}" value="${esc(value ?? '')}" placeholder="${esc(placeholder)}" ${type === 'number' ? 'min="1" max="99"' : ''} autocomplete="off" spellcheck="false">
+    ${hint ? `<span class="hint">${hint}</span>` : ''}</label>`
+}
+
+function qualifJiraField(settings, connected) {
+  const current = settings.values.jiraField
+  const fields = settings.fields || []
+  const known = !current || fields.some(field => field.id === current)
+  return `<label class="setting-field"><span class="t">Jira field</span>
+    <select data-qualif-field="jiraField" ${connected && settings.fields ? '' : 'disabled'}>
+      <option value="">None</option>
+      ${known ? '' : `<option value="${esc(current)}" selected>${esc(current)}</option>`}
+      ${fields.map(field => `<option value="${esc(field.id)}" ${field.id === current ? 'selected' : ''}>${esc(field.name)}</option>`).join('')}
+    </select>
+    <span class="hint">${connected ? 'A select field whose options name the qualif number. Atelier shows it on the tickets and sets it after a deploy' : 'Connect Jira to pick it'}</span></label>`
+}
+
+function qualifSettings(state) {
+  const settings = state.qualifSettings
+  const v = settings.values
+  const parts = [`<h3>Qualifs</h3>
+    <label class="setting-row toggle">
+      <input type="checkbox" data-pick="qualif-enabled" ${settings.enabled ? 'checked' : ''}>
+      <span>Show the ${esc(v.label)}s tab: test environments that each get a branch rebuilt from a base branch plus the pull requests of their tickets</span>
+    </label>`]
+  if (!settings.enabled) return parts.join('')
+  parts.push(`<div class="setting-fields">
+    ${qualifField({ field: 'label', label: 'Name', value: v.label, placeholder: 'Qualif' })}
+    ${qualifField({ field: 'count', label: 'How many', value: v.count, type: 'number', hint: 'Numbered from 1' })}
+    ${qualifField({ field: 'url', label: 'Page', value: v.url, placeholder: 'https://qualif{n}.example.com', hint: '<span class="code">{n}</span> becomes the number' })}
+    ${qualifField({ field: 'base', label: 'Base branch', value: v.base, placeholder: 'main' })}
+    ${qualifField({ field: 'branch', label: 'Branch', value: v.branch, placeholder: 'qualif-{login}-{n}', hint: 'Force-pushed on each sync. <span class="code">{login}</span> becomes your GitHub login' })}
+    ${qualifField({ field: 'repo', label: 'GitHub repository', value: v.repo, placeholder: settings.defaultRepo })}
+    ${qualifField({ field: 'workflow', label: 'Deploy workflow', value: v.workflow, placeholder: 'deploy.yml', hint: 'Run on the pushed branch. Without it, Sync only pushes' })}
+    <label class="setting-field"><span class="t">Workflow inputs</span>
+      <textarea data-qualif-field="inputs" rows="2" placeholder="environment=qualif{n}" spellcheck="false">${esc(v.inputs)}</textarea>
+      <span class="hint">One <span class="code">name=value</span> per line</span></label>
+    ${qualifJiraField(settings, state.jira.connected)}
+  </div>
+  <div class="setting-row cache-commands"><span class="t">Clear the cache</span>
+    ${settings.cache.length ? settings.cache.map(command => `<span class="code">${esc(command)}</span>`).join('') : '<span>Not set up</span>'}
+    <span class="hint">The commands come from <span class="code">qualif.cache</span> in config.json</span>
+  </div>`)
+  return parts.join('')
 }
 
 function columnPicks(columns, checked, attrs, taken = new Map()) {
@@ -580,7 +633,7 @@ const navItems = state => [
   { tab: 'mine', label: 'My tickets', glyph: 'list' },
   ...(state?.filters || []).map(filter => ({ tab: filter.id, label: filter.label, glyph: G[filter.icon] ? filter.icon : 'filter', sub: true })),
   ...(state && !state.jira.unassignedColumns.length ? [] : [{ tab: 'unassigned', label: 'Unassigned', glyph: 'userPlus', sub: true }]),
-  { tab: 'qualifs', label: 'Qualifs', glyph: 'server' },
+  ...(state && !state.qualifs ? [] : [{ tab: 'qualifs', label: `${state?.qualifs.label || 'Qualif'}s`, glyph: 'server' }]),
   { tab: 'reviews', label: 'To review', glyph: 'eye' },
   { tab: 'settings', label: 'Settings', glyph: 'settings' }
 ]
@@ -588,7 +641,7 @@ const navItems = state => [
 function navCount(state, tab) {
   if (!state) return 0
   if (tab === 'unassigned') return state.unassigned.length
-  if (tab === 'qualifs') return state.qualifs.items.length
+  if (tab === 'qualifs') return state.qualifs?.items.length || 0
   if (tab === 'reviews') return state.reviews.filter(pr => pr.group === 'waiting' && !ui.hiddenRepos.has(pr.repo)).length
   if (tab === 'settings') return 0
   return ticketsIn(state, tab).length
@@ -775,19 +828,20 @@ function qualifStatus(q) {
   return ['sand', 'Out of date']
 }
 
-function qualifTicket(q, row) {
-  const jira = row.jiraQualif === q.number ? ''
-    : row.jiraQualif ? `<span class="jira-qualif" title="The Qualif field in Jira points elsewhere">Jira says qualif ${row.jiraQualif}</span>`
-    : '<span class="jira-qualif" title="The PO reads this field to know where to test">Qualif empty in Jira</span>'
+function qualifTicket(qualifs, q, row) {
+  const label = qualifs.label
+  const jira = !qualifs.jira || row.jiraQualif === q.number ? ''
+    : row.jiraQualif ? `<span class="jira-qualif" title="The ${esc(label)} field in Jira points elsewhere">Jira says ${esc(label)} ${row.jiraQualif}</span>`
+    : `<span class="jira-qualif" title="The PO reads this field to know where to test">${esc(label)} empty in Jira</span>`
   const prs = row.prs.length ? row.prs.map(prChip).join('')
-    : row.merged ? '<span class="no-pr">Merged, already in staging</span>'
+    : row.merged ? `<span class="no-pr">Merged, already in ${esc(qualifs.base)}</span>`
     : '<span class="no-pr missing">No open pull request</span>'
   return `<li class="qualif-ticket">
     ${row.url ? `<button class="key code" data-act="open-url" data-url="${esc(row.url)}" title="Open ${esc(row.key)} in Jira">${esc(row.key)}</button>` : `<span class="key code">${esc(row.key)}</span>`}
     <span class="summary" title="${esc(row.summary)}">${esc(row.summary || 'Not assigned to you any more')}</span>
     ${jira}
     ${prs}
-    <button class="unassign" data-act="qualif-unassign" data-number="${q.number}" data-key="${esc(row.key)}" title="Take ${esc(row.key)} off qualif ${q.number}" aria-label="Take ${esc(row.key)} off qualif ${q.number}" ${q.current ? 'disabled' : ''}><span class="glyph">${G.cross}</span></button>
+    <button class="unassign" data-act="qualif-unassign" data-number="${q.number}" data-key="${esc(row.key)}" title="Take ${esc(row.key)} off ${esc(label)} ${q.number}" aria-label="Take ${esc(row.key)} off ${esc(label)} ${q.number}" ${q.current ? 'disabled' : ''}><span class="glyph">${G.cross}</span></button>
   </li>`
 }
 
@@ -799,64 +853,67 @@ const PHASES = {
   skipped: ['', G.check, 'skipped']
 }
 
-function deployStatus(q) {
+function deployStatus(q, cache) {
   const d = q.deploy
   if (!d) return ''
   const phase = (name, value) => {
     const [color, glyph, label] = value ? PHASES[value] || ['', G.pending, value] : d.status === 'completed' ? ['', G.cross, 'not run'] : ['', G.pending, 'waiting']
     return `<span class="phase ${color}"><span class="glyph">${glyph}</span>${name} ${label}</span>`
   }
-  const cacheStale = d.deploy === 'done' && d.finishedAt && (!q.cacheClearedAt || q.cacheClearedAt < Date.parse(d.finishedAt))
+  const cacheStale = cache && d.deploy === 'done' && d.finishedAt && (!q.cacheClearedAt || q.cacheClearedAt < Date.parse(d.finishedAt))
   return `<div class="deploy-status">
     <button class="run-link" data-act="open-url" data-url="${esc(d.url)}" title="Open the run on GitHub">Run ${ago(d.at)}</button>
     ${phase('Build', d.build)}
     ${phase('Deploy', d.deploy)}
     <span class="code head" title="Commit deployed">${esc(d.head.slice(0, 7))}</span>
     ${cacheStale ? '<span class="cache-stale">Cache not cleared since this deploy</span>'
-      : q.cacheClearedAt ? `<span class="cache-ok">Cache cleared ${ago(q.cacheClearedAt)}</span>` : ''}
+      : cache && q.cacheClearedAt ? `<span class="cache-ok">Cache cleared ${ago(q.cacheClearedAt)}</span>` : ''}
   </div>`
 }
 
 function qualifCard(state, q) {
+  const qualifs = state.qualifs
+  const name = `${qualifs.label} ${q.number}`
+  const fillN = text => text.replaceAll('{n}', String(q.number))
   const [color, label] = qualifStatus(q)
-  const busy = Boolean(q.current) || Boolean(state.qualifs.running)
+  const busy = Boolean(q.current) || Boolean(qualifs.running)
   const missing = q.tickets.some(row => !row.prs.length && !row.merged)
   const canSync = q.toSync.length && !missing && !busy
-  const why = busy ? (q.current ? 'This qualif is syncing' : `Qualif ${state.qualifs.running} is syncing`)
+  const why = busy ? (q.current ? `${name} is syncing` : `${qualifs.label} ${qualifs.running} is syncing`)
     : missing ? 'A ticket has no open pull request'
     : !q.toSync.length ? 'Add a ticket with an open pull request first' : ''
-  const choices = state.qualifs.candidates.filter(c => !q.tickets.some(row => row.key === c.key))
+  const choices = qualifs.candidates.filter(c => !q.tickets.some(row => row.key === c.key))
   const run = q.current || q.last
   const confirming = ui.confirm?.type === 'qualif-sync' && ui.confirm.number === q.number
   const confirmingCache = ui.confirm?.type === 'qualif-cache' && ui.confirm.number === q.number
   const prList = q.toSync.map(pr => `<span class="code">#${pr.number}</span>`).join(' ')
-  const jiraKeys = q.tickets.filter(row => row.prs.length && row.jiraQualif !== q.number).map(row => `<span class="code">${esc(row.key)}</span>`)
+  const jiraKeys = !qualifs.jira ? [] : q.tickets.filter(row => row.prs.length && row.jiraQualif !== q.number).map(row => `<span class="code">${esc(row.key)}</span>`)
   const deployRunning = q.deploy && q.deploy.status !== 'completed'
   return `<article class="qualif ${q.current ? 'running' : ''}" data-qualif="${q.number}">
     <div class="qualif-head">
-      <h3><button data-act="open-url" data-url="${esc(q.url)}" title="Open ${esc(q.url)}">Qualif ${q.number}</button></h3>
+      <h3>${q.url ? `<button data-act="open-url" data-url="${esc(q.url)}" title="Open ${esc(q.url)}">${esc(name)}</button>` : esc(name)}</h3>
       <span class="chip ${color}"><span class="label">${esc(label)}</span></span>
       ${q.branch ? `<span class="branch code" title="Branch rebuilt by qualif-sync">${esc(q.branch)}</span>` : ''}
       <span class="qualif-actions">
         <button class="btn quiet" data-act="qualif-sync" data-number="${q.number}" ${canSync ? '' : 'disabled'} title="${esc(why || 'Build the branch locally and show it, push nothing')}">Preview</button>
-        <button class="btn primary" data-act="ask-qualif-sync" data-number="${q.number}" ${canSync ? '' : 'disabled'} title="${esc(why || `Push the branch and deploy it to qualif${q.number}`)}">Sync and deploy</button>
-        <button class="btn quiet" data-act="ask-qualif-cache" data-number="${q.number}" ${busy ? 'disabled' : ''} title="${esc(busy ? why : deployRunning ? 'A deployment is still running: clear the cache once it is done' : `Purge the page cache of qualif${q.number}: listings, product pages and rendered pages`)}"><span class="glyph">${G.broom}</span><span class="t">Clear the cache</span></button>
-        <button class="unassign" data-act="qualif-remove" data-number="${q.number}" title="Remove qualif ${q.number} from Atelier" aria-label="Remove qualif ${q.number} from Atelier" ${q.current ? 'disabled' : ''}><span class="glyph">${G.cross}</span></button>
+        <button class="btn primary" data-act="ask-qualif-sync" data-number="${q.number}" ${canSync ? '' : 'disabled'} title="${esc(why || (qualifs.deploys ? `Push the branch and deploy it to ${name}` : 'Push the branch'))}">${qualifs.deploys ? 'Sync and deploy' : 'Sync'}</button>
+        ${qualifs.cache ? `<button class="btn quiet" data-act="ask-qualif-cache" data-number="${q.number}" ${busy ? 'disabled' : ''} title="${esc(busy ? why : deployRunning ? 'A deployment is still running: clear the cache once it is done' : `Clear the cache of ${name}`)}"><span class="glyph">${G.broom}</span><span class="t">Clear the cache</span></button>` : ''}
+        <button class="unassign" data-act="qualif-remove" data-number="${q.number}" title="Remove ${esc(name)} from Atelier" aria-label="Remove ${esc(name)} from Atelier" ${q.current ? 'disabled' : ''}><span class="glyph">${G.cross}</span></button>
       </span>
     </div>
-    ${deployStatus(q)}
-    ${q.tickets.length ? `<ul class="qualif-tickets">${q.tickets.map(row => qualifTicket(q, row)).join('')}</ul>` : '<p class="empty">No ticket on this qualif yet.</p>'}
-    ${choices.length && !q.current ? `<select class="pick" data-pick="qualif-ticket" data-number="${q.number}" aria-label="Add a ticket to qualif ${q.number}">
+    ${deployStatus(q, qualifs.cache)}
+    ${q.tickets.length ? `<ul class="qualif-tickets">${q.tickets.map(row => qualifTicket(qualifs, q, row)).join('')}</ul>` : `<p class="empty">No ticket on ${esc(name)} yet.</p>`}
+    ${choices.length && !q.current ? `<select class="pick" data-pick="qualif-ticket" data-number="${q.number}" aria-label="Add a ticket to ${esc(name)}">
       <option value="">Add a ticket…</option>
-      ${choices.map(c => `<option value="${esc(c.key)}">${esc(c.key)} · ${esc(c.summary)}${c.qualif ? ` (Jira: qualif ${c.qualif})` : ''}</option>`).join('')}
+      ${choices.map(c => `<option value="${esc(c.key)}">${esc(c.key)} · ${esc(c.summary)}${qualifs.jira && c.qualif ? ` (Jira: ${esc(qualifs.label)} ${c.qualif})` : ''}</option>`).join('')}
     </select>` : ''}
     ${confirming ? `<div class="confirm">
-      <span class="question">Rebuild <strong class="code">${esc(q.branch || 'the branch')}</strong> from staging + ${prList}, force-push it and deploy it to <strong>qualif${q.number}</strong>${jiraKeys.length ? `, then set Qualif ${q.number} in Jira on ${jiraKeys.join(', ')}` : ''}?</span>
-      <button class="btn primary" data-act="qualif-deploy" data-number="${q.number}" ${canSync ? '' : 'disabled'}>Sync and deploy</button>
+      <span class="question">Rebuild <strong class="code">${esc(q.branch || 'the branch')}</strong> from ${esc(qualifs.base)} + ${prList}, force-push it${qualifs.deploys ? ` and deploy it to <strong>${esc(name)}</strong>` : ''}${jiraKeys.length ? `, then set ${esc(name)} in Jira on ${jiraKeys.join(', ')}` : ''}?</span>
+      <button class="btn primary" data-act="qualif-deploy" data-number="${q.number}" ${canSync ? '' : 'disabled'}>${qualifs.deploys ? 'Sync and deploy' : 'Sync'}</button>
       <button class="btn quiet" data-act="cancel">Cancel</button>
     </div>` : ''}
-    ${confirmingCache ? `<div class="confirm">
-      <span class="question">Purge the <span class="code">QLF${q.number}pcache_grid</span>, <span class="code">_product</span> and <span class="code">_page</span> keys of <strong>qualif${q.number}</strong>? Stock and prices are kept.${deployRunning ? ' A deployment is still running.' : ''}</span>
+    ${confirmingCache && qualifs.cache ? `<div class="confirm">
+      <span class="question">${qualifs.cache.description ? esc(fillN(qualifs.cache.description)) : `Clear the cache of <strong>${esc(name)}</strong>? Atelier runs ${qualifs.cache.commands.map(command => `<span class="code">${esc(fillN(command))}</span>`).join(', then ')}.`}${deployRunning ? ' A deployment is still running.' : ''}</span>
       <button class="btn primary" data-act="qualif-cache" data-number="${q.number}" ${busy ? 'disabled' : ''}>Clear the cache</button>
       <button class="btn quiet" data-act="cancel">Cancel</button>
     </div>` : ''}
@@ -869,16 +926,21 @@ function qualifCard(state, q) {
 
 function renderQualifs(state) {
   const q = state.qualifs
+  if (!q) {
+    $('qualifs').innerHTML = ''
+    return
+  }
+  const label = esc(q.label)
   const parts = [`<div class="pane-head">
-    <h2 id="qualifs-title">Qualifs <span class="count">${q.items.length || ''}</span></h2>
-    ${q.free.length ? `<select class="pick" data-pick="qualif-add" aria-label="Add a qualif">
-      <option value="">Add a qualif…</option>
-      ${q.free.map(n => `<option value="${n}">Qualif ${n}</option>`).join('')}
+    <h2 id="qualifs-title">${label}s <span class="count">${q.items.length || ''}</span></h2>
+    ${q.free.length ? `<select class="pick" data-pick="qualif-add" aria-label="Add a ${label.toLowerCase()}">
+      <option value="">Add a ${label.toLowerCase()}…</option>
+      ${q.free.map(n => `<option value="${n}">${label} ${n}</option>`).join('')}
     </select>` : ''}
   </div>`]
-  parts.push(`<p class="repos">Each qualif gets its own branch, rebuilt from staging plus the open pull requests of its tickets, in this order, by <span class="code">qualif-sync</span>.</p>`)
+  parts.push(`<p class="repos">Each ${label.toLowerCase()} gets its own branch, rebuilt from ${esc(q.base)} plus the open pull requests of its tickets, in this order, by <span class="code">qualif-sync</span>.</p>`)
   if (state.errors.github) parts.push(`<p class="notice">GitHub did not answer: ${esc(state.errors.github)}. The pull requests below may be out of date.</p>`)
-  parts.push(q.items.length ? q.items.map(item => qualifCard(state, item)).join('') : '<p class="empty">Add the qualifs you use, then pick the tickets that go on each one.</p>')
+  parts.push(q.items.length ? q.items.map(item => qualifCard(state, item)).join('') : `<p class="empty">Add the ${label.toLowerCase()}s you use, then pick the tickets that go on each one.</p>`)
   $('qualifs').innerHTML = parts.join('')
   for (const pre of $('qualifs').querySelectorAll('.qualif.running pre')) pre.scrollTop = pre.scrollHeight
 }
@@ -986,7 +1048,7 @@ function render() {
   renderUnassigned(state)
   if (!(active?.tagName === 'SELECT' && active.closest('#qualifs'))) renderQualifs(state)
   renderReviews(state)
-  if (!(active?.matches('input:not([type="checkbox"]), select') && $('settings').contains(active))) renderSettings(state)
+  if (!(active?.matches('input:not([type="checkbox"]), select, textarea') && $('settings').contains(active))) renderSettings(state)
   renderLaunch(state)
   renderNav()
 
@@ -1188,9 +1250,13 @@ const handlers = {
     renderSettings(ui.state)
   },
   'choose-dev-dir': () => act('chooseDevDir', {}, 'choose-dev-dir'),
-  'go-settings': () => setTab('settings'),
+  'go-settings': () => {
+    ui.settingsTab = 'tickets'
+    renderSettings(ui.state)
+    setTab('settings')
+  },
   'settings-tab'(el) {
-    ui.settingsTab = el.dataset.section === 'tickets' ? 'tickets' : 'global'
+    ui.settingsTab = SETTINGS_TABS.some(tab => tab.id === el.dataset.section) ? el.dataset.section : 'global'
     try {
       localStorage.setItem('atelier.settingsTab', ui.settingsTab)
     } catch {}
@@ -1240,6 +1306,14 @@ document.addEventListener('change', event => {
     const index = Number(event.target.dataset.filterLabel)
     act('jiraFilters', { filters: jira.filters.map((filter, i) => i === index ? { ...filter, label: event.target.value } : filter) })
       .then(result => { if (!result?.ok) renderSettings(ui.state) })
+    return
+  }
+  const qualifSetting = event.target.dataset?.qualifField
+  if (qualifSetting || pick === 'qualif-enabled') {
+    const field = qualifSetting || 'enabled'
+    const value = field === 'enabled' ? event.target.checked : event.target.value
+    if (event.target.tagName === 'SELECT') event.target.blur()
+    act('qualifSetting', { field, value }).then(result => { if (!result?.ok) renderSettings(ui.state) })
     return
   }
   if (pick === 'jira-board') {
@@ -1377,7 +1451,7 @@ window.atelier.onState(state => {
   ui.state = state
   if (ui.confirm?.type === 'move' && !state.tickets.some(t => t.key === ui.confirm.key)) ui.confirm = null
   if (ui.confirm?.type === 'take' && !state.unassigned.some(t => t.key === ui.confirm.key)) ui.confirm = null
-  if (/^qualif-/.test(ui.confirm?.type) && !state.qualifs.items.some(q => q.number === ui.confirm.number)) ui.confirm = null
+  if (/^qualif-/.test(ui.confirm?.type) && !state.qualifs?.items.some(q => q.number === ui.confirm.number)) ui.confirm = null
   if (ui.confirm?.type === 'rebase' && !state.tickets.some(t => t.key === ui.confirm.key && t.rebasable)) ui.confirm = null
   render()
 })
