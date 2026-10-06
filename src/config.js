@@ -26,6 +26,7 @@ const defaults = {
   hiddenColumns: [],
   columnColors: {},
   qualifField: 'customfield_10253',
+  verificationField: 'customfield_10451',
   qualifKubeContext: 'gke_tikamoon-qualif_europe-west1_cluster-tikamoon-qualif',
   githubOrg: 'Tikamoon',
   reviewRepos: [],

@@ -313,6 +313,7 @@ function ticketRow(ticket, columns) {
     <div class="head">
       <button class="key code" data-act="open-url" data-url="${esc(ticket.url)}" title="Open ${esc(ticket.key)} in Jira">${esc(ticket.key)}</button>
       <span class="summary" title="${esc(ticket.summary)}">${esc(ticket.summary)}</span>
+      ${ticket.verification ? `<span class="verification" title="Vérification: ${esc(ticket.verification)}">${esc(ticket.verification)}</span>` : ''}
       <span class="type">${esc(ticket.type)}</span>
       ${timeCell(ticket)}
     </div>

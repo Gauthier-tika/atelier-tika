@@ -77,7 +77,7 @@ class Jira {
 
   async tickets(reconcile = []) {
     const flagField = await this.discoverFlagField()
-    const fields = ['summary', 'status', 'issuetype', 'priority', 'timespent', 'updated', 'parent', flagField, this.config.qualifField]
+    const fields = ['summary', 'status', 'issuetype', 'priority', 'timespent', 'updated', 'parent', flagField, this.config.qualifField, this.config.verificationField]
     const issues = []
     let nextPageToken
     do {
@@ -109,6 +109,7 @@ class Jira {
         epic: f.parent ? { key: f.parent.key, summary: f.parent.fields?.summary || '' } : null,
         blocked: Array.isArray(flag) && flag.length > 0,
         qualif: qualifNumber(f[this.config.qualifField]),
+        verification: f[this.config.verificationField]?.value || null,
         timeSpent: f.timespent || 0,
         updated: f.updated
       }
