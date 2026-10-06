@@ -17,7 +17,7 @@ class Terminals {
   }
 
   list() {
-    return [...this.items.values()].map(({ pty: _pty, output: _output, ...item }) => item)
+    return [...this.items.values()].map(({ pty: _pty, output: _output, offset: _offset, sizes: _sizes, ...item }) => item)
   }
 
   running() {
@@ -43,10 +43,19 @@ class Terminals {
       cwd,
       env: childEnv
     })
-    const item = { id, key, prId, runId, label, cwd, kind, parent, pid: child.pid, startedAt: Date.now(), exited: false, exitCode: null, pty: child, output: '' }
+    const item = {
+      id, key, prId, runId, label, cwd, kind, parent, pid: child.pid, startedAt: Date.now(), exited: false, exitCode: null,
+      pty: child, output: '', offset: 0, sizes: [{ at: 0, ...this.size }]
+    }
     this.items.set(id, item)
     child.onData(data => {
-      item.output = (item.output + data).slice(-SCROLLBACK_BYTES)
+      item.output += data
+      const excess = item.output.length - SCROLLBACK_BYTES
+      if (excess > 0) {
+        item.output = item.output.slice(excess)
+        item.offset += excess
+        while (item.sizes.length > 1 && item.sizes[1].at <= item.offset) item.sizes.shift()
+      }
       this.queue(id, data)
     })
     child.onExit(({ exitCode }) => {
@@ -74,7 +83,9 @@ class Terminals {
   }
 
   replay(id) {
-    return this.items.get(id)?.output || ''
+    const item = this.items.get(id)
+    if (!item) return { output: '', sizes: [] }
+    return { output: item.output, sizes: item.sizes.map(size => ({ ...size, at: Math.max(0, size.at - item.offset) })) }
   }
 
   write(id, data) {
@@ -84,7 +95,10 @@ class Terminals {
 
   resize(id, cols, rows) {
     const item = this.items.get(id)
-    if (item && !item.exited && cols > 1 && rows > 1) item.pty.resize(cols, rows)
+    if (!item || item.exited || cols <= 1 || rows <= 1) return
+    item.pty.resize(cols, rows)
+    const last = item.sizes.at(-1)
+    if (last.cols !== cols || last.rows !== rows) item.sizes.push({ at: item.offset + item.output.length, cols, rows })
   }
 
   setSize(cols, rows) {

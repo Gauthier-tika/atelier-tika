@@ -124,25 +124,41 @@ function ensurePane(id) {
   const fit = new FitAddon.FitAddon()
   term.loadAddon(fit)
   term.loadAddon(new WebLinksAddon.WebLinksAddon((_event, uri) => act('openUrl', { url: uri })))
+  const pane = { id, term, fit, el, ready: false, backlog: '' }
+  view.panes.set(id, pane)
   term.open(host)
-  term.onData(data => window.atelier.term.input(id, data))
-  term.onBinary(data => window.atelier.term.input(id, data))
-  term.onResize(({ cols, rows }) => window.atelier.term.resize(id, cols, rows))
+  term.onData(data => pane.ready && window.atelier.term.input(id, data))
+  term.onBinary(data => pane.ready && window.atelier.term.input(id, data))
+  term.onResize(({ cols, rows }) => pane.ready && window.atelier.term.resize(id, cols, rows))
   term.attachCustomKeyEventHandler(event => handleKey(event, id))
   term.textarea?.addEventListener('focus', () => setFocused(id))
 
-  const pane = { id, term, fit, el, ready: false }
-  view.panes.set(id, pane)
   new ResizeObserver(() => fitPane(pane)).observe(el)
-  window.atelier.term.replay(id).then(output => {
-    term.write(output)
-    pane.ready = true
-  })
+  replay(pane)
   return pane
 }
 
+async function replay(pane) {
+  await replayOutput(pane).catch(() => {})
+  if (view.panes.get(pane.id) !== pane) return
+  pane.ready = true
+  pane.term.write(pane.backlog)
+  pane.backlog = ''
+  fitPane(pane)
+}
+
+async function replayOutput(pane) {
+  const { output, sizes } = await window.atelier.term.replay(pane.id)
+  pane.backlog = ''
+  for (const [i, size] of sizes.entries()) {
+    if (view.panes.get(pane.id) !== pane) return
+    pane.term.resize(size.cols, size.rows)
+    await new Promise(resolve => pane.term.write(output.slice(size.at, sizes[i + 1]?.at ?? output.length), resolve))
+  }
+}
+
 function fitPane(pane) {
-  if (!pane.el.isConnected || pane.el.offsetParent === null) return
+  if (!pane.ready || !pane.el.isConnected || pane.el.offsetParent === null) return
   try {
     pane.fit.fit()
   } catch {}
@@ -164,6 +180,7 @@ function disposePane(id) {
 window.atelier.term.onData((id, data) => {
   const pane = view.panes.get(id)
   if (pane?.ready) pane.term.write(data)
+  else if (pane) pane.backlog += data
 })
 
 window.atelier.term.onExit(id => {
