@@ -4,15 +4,15 @@ export GIT_PAGER=cat PAGER=cat LC_ALL=C
 
 usage() {
     cat <<'EOF'
-usage: qualif-sync <qualif-number> [PR...] [-x PR]... [options] [--dry-run | --deploy]
+usage: qualif-sync <qualif-number> [PR...] [-x PR]... [options] [--direct] [--dry-run | --deploy]
 
 Rebuild the qualif branch from origin/<base> plus a copy of the commits of each
 PR and push it; --deploy then runs the deploy workflow on it. Each qualif has
 its own branch, so its image tag is not shared with another qualif. The PR
 commits, their branches and the working copy are not touched.
 
-With a single PR and a workflow, nothing is rebuilt or pushed: the workflow
-runs on the PR's own branch, as it is.
+With --direct, nothing is rebuilt or pushed: the workflow runs on the single
+PR's own branch, as it is.
 
 It also reports the PRs that change the same files (re-check them together
 when one of them leaves qualif) and the PRs that do not apply alone on the base.
@@ -25,6 +25,8 @@ when one of them leaves qualif) and the PRs that do not apply alone on the base.
   --max N           highest qualif number (default: 99)
   --workflow FILE   GitHub Actions workflow that deploys the branch
   -f, --input K=V   input passed to that workflow, {n} replaced (repeatable)
+  --direct          deploy the single PR's own branch instead of rebuilding
+                    the qualif branch (needs --workflow, not for a fork PR)
   --dry-run         build the branch and show it, push nothing
   --deploy          also run the workflow on the pushed branch
 EOF
@@ -37,6 +39,7 @@ prs=()
 excluded=()
 dry_run=0
 deploy=0
+direct=0
 base_branch=main
 branch_pattern='qualif-{login}-{n}'
 max=99
@@ -52,6 +55,7 @@ while (($#)); do
         -f|--input) inputs+=("${2:?missing KEY=VALUE after $1}"); shift 2 ;;
         --dry-run) dry_run=1; shift ;;
         --deploy) deploy=1; shift ;;
+        --direct) direct=1; shift ;;
         -h|--help) usage; exit 0 ;;
         -*) usage >&2; exit 2 ;;
         *) if [[ -z $qualif ]]; then qualif=$1; else prs+=("$1"); fi; shift ;;
@@ -62,6 +66,7 @@ done
 [[ $qualif =~ ^[1-9][0-9]*$ ]] && ((qualif <= max)) || { usage >&2; exit 2; }
 ((dry_run && deploy)) && die "--dry-run and --deploy cannot be combined"
 ((deploy)) && [[ -z $workflow ]] && die "--deploy needs --workflow"
+((direct)) && [[ -z $workflow ]] && die "--direct needs --workflow"
 
 run_workflow() {
     local ref=$1 input
@@ -94,27 +99,26 @@ for pr in "${prs[@]}"; do
 done
 ((${#selected[@]})) || die "no PR to deploy"
 
-if ((${#selected[@]} == 1)) && [[ -n $workflow ]]; then
+if ((direct)); then
+    ((${#selected[@]} == 1)) || die "--direct takes a single PR"
     pr=${selected[0]}
     read -r state cross head_ref head_oid title < <(
         gh pr view "$pr" --json state,isCrossRepository,headRefName,headRefOid,title \
             --jq '"\(.state) \(.isCrossRepository) \(.headRefName) \(.headRefOid) \(.title)"'
     ) || die "cannot read PR #$pr"
     [[ $state == OPEN ]] || die "PR #$pr is $state"
-    if [[ $cross == false ]]; then
-        git cat-file -e "$head_oid^{commit}" 2>/dev/null || git fetch -q origin "$head_ref"
-        git cat-file -e "$head_oid^{commit}" 2>/dev/null || die "cannot fetch the head of PR #$pr ($head_ref)"
-        echo
-        echo "Single PR: the workflow runs on its branch as it is, $branch is not pushed."
-        echo "  #$pr  $head_ref  $title"
-        behind=$(git rev-list --count "$head_oid..origin/$base_branch")
-        ((behind)) && echo "warning: $head_ref is $behind commits behind origin/$base_branch, which this qualif will not get"
-        echo
-        ((deploy)) || echo "Dry run: nothing deployed."
-        run_workflow "$head_ref"
-        exit 0
-    fi
-    echo "PR #$pr comes from a fork, so its commits go on $branch instead"
+    [[ $cross == false ]] || die "PR #$pr comes from a fork, so its branch cannot be deployed here; leave out --direct"
+    git cat-file -e "$head_oid^{commit}" 2>/dev/null || git fetch -q origin "$head_ref"
+    git cat-file -e "$head_oid^{commit}" 2>/dev/null || die "cannot fetch the head of PR #$pr ($head_ref)"
+    echo
+    echo "Single PR: the workflow runs on its branch as it is, $branch is not pushed."
+    echo "  #$pr  $head_ref  $title"
+    behind=$(git rev-list --count "$head_oid..origin/$base_branch")
+    ((behind)) && echo "warning: $head_ref is $behind commits behind origin/$base_branch, which this qualif will not get"
+    echo
+    ((deploy)) || echo "Dry run: nothing deployed."
+    run_workflow "$head_ref"
+    exit 0
 fi
 
 copy_commit() {

@@ -105,6 +105,7 @@ const pr = (number, title, branch, extra = {}) => ({
   branch,
   head: `${number}abcdef`,
   base: 'main',
+  fork: false,
   commitCount: 1,
   state: 'OPEN',
   draft: false,

@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const demo = require('../demo/fixture')
-const { compose, qualifPrs } = require('../src/compose')
+const { compose, qualifPlan } = require('../src/compose')
 
 const data = (extra = {}) => ({
   columns: demo.columns,
@@ -119,10 +119,34 @@ test('qualif numbers in use are not offered again, and only tickets with an open
   assert.deepEqual(qualifs.candidates.map(c => c.key), ['SHOP-482', 'SHOP-469', 'SHOP-455'])
 })
 
-test('a ticket whose pull requests are all merged is marked merged', () => {
-  const [row] = qualifPrs(['SHOP-448'], demo.tickets, demo.github.mine, 'shop')
-  assert.deepEqual(row.prs, [])
-  assert.equal(row.merged, true)
+const plan = (keys, settings = demo.config.qualif, prs = demo.github.mine) =>
+  qualifPlan(settings, { number: 4, tickets: keys }, { tickets: demo.tickets, prs, repo: 'shop', login: 'you' })
+
+test('a ticket whose pull requests are all merged is marked merged, not missing', () => {
+  const { rows, missing, toSync } = plan(['SHOP-448'])
+  assert.deepEqual(rows[0].prs, [])
+  assert.equal(rows[0].merged, true)
+  assert.deepEqual(missing, [])
+  assert.deepEqual(toSync, [])
+})
+
+test('a ticket without any pull request is missing', () => {
+  assert.deepEqual(plan(['SHOP-490']).missing, ['SHOP-490'])
+})
+
+test('a single pull request from a fork goes on the qualif branch', () => {
+  const prs = demo.github.mine.map(pr => pr.number === 1201 ? { ...pr, fork: true } : pr)
+  const { direct, branch, qualifBranch } = plan(['SHOP-469'], demo.config.qualif, prs)
+  assert.equal(direct, false)
+  assert.equal(branch, 'qualif-you-4')
+  assert.equal(qualifBranch, 'qualif-you-4')
+})
+
+test('the qualif branch is filled even when the pull request branch is deployed', () => {
+  const { direct, branch, qualifBranch } = plan(['SHOP-469'])
+  assert.equal(direct, true)
+  assert.equal(branch, 'SHOP-469-material-filter')
+  assert.equal(qualifBranch, 'qualif-you-4')
 })
 
 test('each qualif gets its cache commands with its number filled in', () => {

@@ -8,7 +8,7 @@ const claude = require('./claude')
 const launch = require('./launch')
 const wm = require('./wm')
 const { Timer } = require('./timer')
-const { compose, qualifPrs, deploysPrBranch, deployTarget, syncedBranch, inProgressStation } = require('./compose')
+const { compose, qualifPlan, syncedBranch, inProgressStation } = require('./compose')
 const { Qualifs } = require('./qualifs')
 const { run, onPath, env } = require('./run')
 const rebase = require('./rebase')
@@ -646,37 +646,37 @@ const actions = {
     qualifs.get(number)
     await loaders.github()
     if (data.errors.github) throw new Error(`GitHub did not answer (${data.errors.github}), try again`)
-    const rows = qualifPrs(qualifs.get(number).tickets, tickets(), data.github.mine, config.repoName)
-    const missing = rows.filter(row => !row.prs.length && !row.merged).map(row => row.key)
+    const n = Number(number)
+    const plan = qualifPlan(settings, qualifs.get(number), { tickets: tickets(), prs: data.github.mine, repo: config.repoName, login: data.github.viewer })
+    const { missing, rows } = plan
     if (missing.length) throw new Error(`${missing.join(', ')} ${missing.length > 1 ? 'have' : 'has'} no open pull request in ${config.repoName}. Remove ${missing.length > 1 ? 'them' : 'it'} or open the PR first`)
-    const prs = rows.flatMap(row => row.prs.map(pr => ({ number: pr.number, head: pr.head, branch: pr.branch, key: row.key })))
-    const target = deployTarget(settings, data.github.viewer, Number(number), prs)
     if (deploy && !settings.workflow) throw new Error(`No deploy workflow is set up for ${settings.label.toLowerCase()}s in config.json`)
     const args = [
-      String(number), ...prs.map(pr => String(pr.number)),
-      '--base', settings.base, '--branch', settings.branch, '--max', String(settings.count),
-      ...(settings.workflow ? ['--workflow', settings.workflow, ...Object.entries(settings.inputs).flatMap(([key, value]) => ['-f', `${key}=${value}`])] : []),
+      String(n), ...plan.toSync.map(pr => String(pr.number)),
+      '--base', settings.base, '--branch', plan.qualifBranch || settings.branch, '--max', String(settings.count),
+      ...(settings.workflow ? ['--workflow', settings.workflow, ...Object.entries(settings.inputs).flatMap(([key, value]) => ['-f', `${key}=${configModule.fill(value, { n })}`])] : []),
+      ...(plan.direct ? ['--direct'] : []),
       deploy ? '--deploy' : '--dry-run'
     ]
     const run = await qualifs.sync(number, {
       bin: config.qualifSyncBin,
       cwd: config.repoDir,
       args,
-      prs,
-      branch: target,
+      prs: plan.toSync,
+      branch: plan.branch,
       deploy: Boolean(deploy),
-      tickets: rows.filter(row => row.prs.length).map(row => row.key)
+      tickets: plan.keys
     })
     if (!run.ok) throw new Error(`qualif-sync failed on ${name}, see its output`)
     if (!deploy) return `Dry run done for ${name}, nothing pushed or deployed`
     setTimeout(() => loaders.deploys(), 5000)
-    const stale = settings.jiraField ? rows.filter(row => row.prs.length && row.jiraQualif !== Number(number)).map(row => row.key) : []
+    const stale = settings.jiraField ? rows.filter(row => row.prs.length && row.jiraQualif !== n).map(row => row.key) : []
     const refused = new Map()
-    for (const key of stale) await jira.setQualif(key, Number(number)).catch(error => refused.set(key, error.message))
+    for (const key of stale) await jira.setQualif(key, n).catch(error => refused.set(key, error.message))
     if (stale.length) loaders.jira()
     const updated = stale.filter(key => !refused.has(key))
     return [
-      deploysPrBranch(settings, prs) ? `Started the deployment of ${target} to ${name}` : `Pushed ${target} and started the deployment to ${name}`,
+      plan.direct ? `Started the deployment of ${plan.branch} to ${name}` : `Pushed ${plan.branch} and started the deployment to ${name}`,
       updated.length ? `set ${name} in Jira on ${updated.join(', ')}` : '',
       refused.size ? `Jira refused ${[...refused].map(([key, why]) => `${key} (${why})`).join(', ')}` : ''
     ].filter(Boolean).join('; ')

@@ -6,7 +6,7 @@ query($q: String!, $first: Int!) {
   search(query: $q, type: ISSUE, first: $first) { nodes { ...pr } }
 }
 fragment pr on PullRequest {
-  id number title url state isDraft headRefName headRefOid baseRefName createdAt updatedAt
+  id number title url state isDraft isCrossRepository headRefName headRefOid baseRefName createdAt updatedAt
   additions deletions changedFiles reviewDecision mergeable
   author { login avatarUrl(size: 64) }
   repository { name nameWithOwner }
@@ -31,6 +31,7 @@ function shape(pr, viewer) {
     branch: pr.headRefName,
     head: pr.headRefOid,
     base: pr.baseRefName,
+    fork: pr.isCrossRepository,
     commitCount: pr.allCommits.totalCount,
     state: pr.state,
     draft: pr.isDraft,

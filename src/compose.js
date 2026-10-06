@@ -37,9 +37,23 @@ const sameSync = (a, b) =>
   a.prs.map(pr => `${pr.number}@${pr.head}`).join() === b.prs.map(pr => `${pr.number}@${pr.head}`).join()
 
 const qualifBranch = (settings, login, n) => login || !settings.branch.includes('{login}') ? fill(settings.branch, { login, n }) : null
-const deploysPrBranch = (settings, prs) => Boolean(settings.workflow) && prs.length === 1
-const deployTarget = (settings, login, n, prs) => deploysPrBranch(settings, prs) ? prs[0].branch : qualifBranch(settings, login, n)
 const syncedBranch = (settings, login, item) => item.synced?.branch || qualifBranch(settings, login, item.number)
+
+function qualifPlan(settings, item, { tickets, prs, repo, login }) {
+  const rows = qualifPrs(item.tickets, tickets, prs, repo)
+  const toSync = rows.flatMap(row => row.prs.map(pr => ({ number: pr.number, head: pr.head, branch: pr.branch, fork: pr.fork, key: row.key })))
+  const direct = Boolean(settings.workflow) && toSync.length === 1 && !toSync[0].fork
+  const rebuilt = qualifBranch(settings, login, item.number)
+  return {
+    rows,
+    toSync,
+    keys: rows.filter(row => row.prs.length).map(row => row.key),
+    missing: rows.filter(row => !row.prs.length && !row.merged).map(row => row.key),
+    direct,
+    qualifBranch: rebuilt,
+    branch: direct ? toSync[0].branch : rebuilt
+  }
+}
 
 function composeQualifs(data, config) {
   const settings = config.qualif
@@ -49,18 +63,17 @@ function composeQualifs(data, config) {
   const tickets = data.tickets || []
   const viewer = data.github?.viewer
   const items = (data.qualifs || []).map(item => {
-    const rows = qualifPrs(item.tickets, tickets, prs, repo)
-    const toSync = rows.flatMap(row => row.prs.map(pr => ({ number: pr.number, head: pr.head, branch: pr.branch, key: row.key })))
-    const wanted = { tickets: rows.filter(row => row.prs.length).map(row => row.key), prs: toSync }
+    const plan = qualifPlan(settings, item, { tickets, prs, repo, login: viewer })
     const deployed = syncedBranch(settings, viewer, item)
     const n = item.number
     return {
       number: n,
       url: settings.url ? fill(settings.url, { n }) : null,
-      branch: deployTarget(settings, viewer, item.number, toSync),
-      direct: deploysPrBranch(settings, toSync),
-      tickets: rows,
-      toSync,
+      branch: plan.branch,
+      direct: plan.direct,
+      tickets: plan.rows,
+      toSync: plan.toSync,
+      missing: plan.missing,
       synced: item.synced || null,
       deploy: (deployed && data.deploys?.[deployed]) || null,
       cache: settings.cache && {
@@ -68,7 +81,7 @@ function composeQualifs(data, config) {
         commands: settings.cache.commands.map(command => fill(command.join(' '), { n }))
       },
       cacheClearedAt: item.cacheClearedAt || null,
-      upToDate: Boolean(item.synced && data.github && sameSync(item.synced, wanted)),
+      upToDate: Boolean(item.synced && data.github && sameSync(item.synced, { tickets: plan.keys, prs: plan.toSync })),
       last: item.last || null,
       current: item.current || null
     }
@@ -211,4 +224,4 @@ function compose(data, timer, config, terminals = []) {
   }
 }
 
-module.exports = { compose, qualifPrs, deploysPrBranch, deployTarget, syncedBranch, inProgressStation }
+module.exports = { compose, qualifPlan, syncedBranch, inProgressStation }

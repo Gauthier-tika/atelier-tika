@@ -1020,7 +1020,7 @@ function qualifCard(state, q) {
   const name = `${qualifs.label} ${q.number}`
   const [color, label] = qualifStatus(q)
   const busy = Boolean(q.current) || Boolean(qualifs.running)
-  const missing = q.tickets.some(row => !row.prs.length && !row.merged)
+  const missing = q.missing.length > 0
   const canSync = q.toSync.length && !missing && !busy
   const why = busy ? (q.current ? `${name} is syncing` : `${qualifs.label} ${qualifs.running} is syncing`)
     : missing ? 'A ticket has no open pull request'
