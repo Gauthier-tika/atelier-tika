@@ -1046,6 +1046,8 @@ button {
 
 .confirm input:focus { outline: 2px solid var(--cyan); outline-offset: 0; border-color: transparent; }
 
+.confirm input.ticket-key { width: 14ch; text-transform: uppercase; }
+.confirm input.ticket-key::placeholder { text-transform: none; }
 .confirm input.date { width: auto; font-variation-settings: normal; }
 
 .play.add-time { color: var(--comment); }

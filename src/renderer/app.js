@@ -307,6 +307,36 @@ function editForm(entry) {
   </form>`
 }
 
+const TICKET_KEY = /^[A-Z][A-Z0-9]+-\d+$/
+
+function newTimeValid() {
+  const seconds = parseDuration(ui.drafts['manual:new'] ?? '')
+  return TICKET_KEY.test((ui.drafts['new-key'] ?? '').trim().toUpperCase()) && seconds >= 60 && seconds <= 86400 && Boolean(ui.confirm?.date)
+}
+
+function newTimeForm() {
+  const key = ui.drafts['new-key'] ?? ''
+  const draft = ui.drafts['manual:new'] ?? ''
+  const parsed = parseDuration(draft)
+  const durationValid = parsed >= 60 && parsed <= 86400
+  const keyValid = TICKET_KEY.test(key.trim().toUpperCase())
+  const busy = ui.busy.has('log:new')
+  const hint = !key && !draft ? 'Ticket such as TOAST-1234. Time formats: 1h, 1.5h, 15m, 1h 30m'
+    : key && !keyValid ? 'Use a ticket number such as TOAST-1234'
+    : draft && !durationValid ? 'Use a duration such as 1h, 1.5h, 15m or 1h 30m'
+    : durationValid ? `That logs ${duration(parsed)}.` : ''
+  const bad = (key && !keyValid) || (draft && !durationValid)
+  return `<form class="confirm" data-form="new-log">
+    <label class="question" for="new-key">Add time on</label>
+    <input id="new-key" class="ticket-key" data-new-key value="${esc(key)}" placeholder="TOAST-1234" autocomplete="off" spellcheck="false" aria-describedby="hint-new">
+    <input data-draft="manual:new" value="${esc(draft)}" placeholder="1h 30m" autocomplete="off" spellcheck="false" aria-label="Time spent" aria-describedby="hint-new">
+    <input type="date" class="date" data-manual-date="new" value="${esc(ui.confirm.date)}" max="${localDay()}" required aria-label="Day">
+    <button class="btn primary" type="submit" ${newTimeValid() && !busy ? '' : 'disabled'}>${busy ? 'Logging…' : 'Log time'}</button>
+    <button class="btn quiet" type="button" data-act="cancel">Cancel</button>
+    <span class="${bad ? 'invalid' : 'hint'}" id="hint-new">${hint}</span>
+  </form>`
+}
+
 function deleteConfirm(entry) {
   const busy = ui.busy.has(`log:${entry.key}`)
   return `<div class="confirm">
@@ -319,7 +349,11 @@ function deleteConfirm(entry) {
 function renderTime(state) {
   const time = state.time
   const entries = time?.entries || []
-  const parts = [`<h2 id="time-title">My time entry <span class="count">${entries.length || ''}</span></h2>`]
+  const parts = [`<div class="pane-head">
+    <h2 id="time-title">My time entry <span class="count">${entries.length || ''}</span></h2>
+    <button class="btn" data-act="ask-new-time" title="Log time on a ticket that is not in the list"><span class="glyph">${G.plus}</span><span class="t">Add time on a ticket</span></button>
+  </div>`]
+  if (ui.confirm?.type === 'new-time') parts.push(newTimeForm())
   if (state.errors.time) parts.push(`<p class="notice">Jira did not answer: ${esc(state.errors.time)}. Refresh once it is back.</p>`)
   if (!entries.length) {
     parts.push(`<p class="empty">${state.loading.time && !time ? 'Loading your time entries…' : 'Nothing logged today yet.'}</p>`)
@@ -1121,7 +1155,7 @@ function render() {
   const state = ui.state
   if (!state) return
   const active = document.activeElement
-  const focusKey = active?.dataset?.draft ? `[data-draft="${active.dataset.draft}"]` : null
+  const focusKey = active?.dataset?.draft ? `[data-draft="${active.dataset.draft}"]` : active?.dataset?.newKey !== undefined ? '[data-new-key]' : null
   const selection = focusKey ? [active.selectionStart, active.selectionEnd] : null
   syncFilterPanes(state)
   const panes = ['mine', ...state.filters.map(f => f.id), 'unassigned', 'time', 'qualifs', 'reviews']
@@ -1297,6 +1331,11 @@ const handlers = {
     if (result?.ok) ui.confirm = null
     render()
   },
+  'ask-new-time': () => {
+    ui.confirm = { type: 'new-time', date: localDay() }
+    render()
+    $('new-key')?.focus()
+  },
   'ask-edit-time': el => {
     ui.confirm = { type: 'edit-time', key: el.dataset.key, id: el.dataset.id }
     render()
@@ -1404,7 +1443,7 @@ document.addEventListener('click', event => {
 })
 
 document.addEventListener('change', event => {
-  if (event.target.dataset?.manualDate && ui.confirm?.type === 'manual-time') {
+  if (event.target.dataset?.manualDate && ['manual-time', 'new-time'].includes(ui.confirm?.type)) {
     ui.confirm.date = event.target.value
     return
   }
@@ -1477,16 +1516,35 @@ document.addEventListener('toggle', event => {
   else ui.logs.delete(number)
 }, true)
 
+function refreshNewTimeForm(form) {
+  const fresh = document.createElement('div')
+  fresh.innerHTML = newTimeForm()
+  form.querySelector('[type="submit"]').disabled = fresh.querySelector('[type="submit"]').disabled
+  const hint = form.querySelector('#hint-new')
+  const next = fresh.querySelector('#hint-new')
+  hint.className = next.className
+  hint.textContent = next.textContent
+}
+
 document.addEventListener('input', event => {
   const field = event.target.dataset?.jira
   if (field) {
     ui.jiraDraft[field] = event.target.value
     return
   }
+  if (event.target.dataset?.newKey !== undefined) {
+    ui.drafts['new-key'] = event.target.value
+    refreshNewTimeForm(event.target.closest('form'))
+    return
+  }
   const key = event.target.dataset?.draft
   if (!key) return
   ui.drafts[key] = event.target.value
   const form = event.target.closest('form')
+  if (form.dataset.form === 'new-log') {
+    refreshNewTimeForm(form)
+    return
+  }
   const parsed = parseDuration(event.target.value)
   const valid = parsed >= 60 && parsed <= 86400
   form.querySelector('[type="submit"]').disabled = !valid
@@ -1511,6 +1569,21 @@ document.addEventListener('submit', async event => {
     if (result?.ok) {
       ui.jiraDraft = {}
       renderSettings(ui.state)
+    }
+    return
+  }
+  const created = event.target.closest('[data-form="new-log"]')
+  if (created) {
+    event.preventDefault()
+    if (!newTimeValid()) return
+    const key = ui.drafts['new-key'].trim().toUpperCase()
+    const seconds = parseDuration(ui.drafts['manual:new'])
+    const result = await act('log', { key, seconds, date: ui.confirm.date }, 'log:new')
+    if (result?.ok) {
+      delete ui.drafts['new-key']
+      delete ui.drafts['manual:new']
+      ui.confirm = null
+      render()
     }
     return
   }
