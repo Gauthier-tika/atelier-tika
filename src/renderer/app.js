@@ -561,16 +561,6 @@ function runList(state) {
 
 /* Panes */
 
-const THEMES = [
-  { id: 'default', label: 'Atelier', swatches: ['#212337', '#282a42', '#9b90f4', '#8acfef', '#13be76', '#e8c59b', '#f97171'] },
-  { id: 'nord', label: 'Nord', swatches: ['#2e3440', '#3b4252', '#81a1c1', '#88c0d0', '#a3be8c', '#ebcb8b', '#bf616a'] },
-  { id: 'light', label: 'Light', swatches: ['#f4f5f9', '#ffffff', '#5b4fd1', '#1d7fa3', '#0b8a55', '#9a6b1c', '#c93a3a'] },
-  { id: 'latte', label: 'Catppuccin Latte', swatches: ['#eff1f5', '#ffffff', '#8839ef', '#209fb5', '#40a02b', '#df8e1d', '#d20f39'] },
-  { id: 'frappe', label: 'Catppuccin Frappé', swatches: ['#303446', '#363a4d', '#ca9ee6', '#99d1db', '#a6d189', '#e5c890', '#e78284'] },
-  { id: 'macchiato', label: 'Catppuccin Macchiato', swatches: ['#24273a', '#2a2e41', '#c6a0f6', '#91d7e3', '#a6da95', '#eed49f', '#ed8796'] },
-  { id: 'mocha', label: 'Catppuccin Mocha', swatches: ['#1e1e2e', '#252536', '#cba6f7', '#89dceb', '#a6e3a1', '#f9e2af', '#f38ba8'] },
-  { id: 'dracula', label: 'Dracula', swatches: ['#282a36', '#323443', '#bd93f9', '#8be9fd', '#50fa7b', '#f1fa8c', '#ff5555'] }
-]
 
 function renderSettings(state) {
   const section = ui.settingsTab

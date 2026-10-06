@@ -15,19 +15,10 @@ const rebase = require('./rebase')
 const sapling = require('./sapling')
 const { Terminals } = require('./terminals')
 const { Runs, dir: runsDir } = require('./runs')
+const { THEMES, themeNamed } = require('./themes')
 
 app.setName('atelier')
 const config = configModule.load()
-const THEMES = {
-  default: '#212337',
-  nord: '#2e3440',
-  light: '#f4f5f9',
-  latte: '#eff1f5',
-  frappe: '#303446',
-  macchiato: '#24273a',
-  mocha: '#1e1e2e',
-  dracula: '#282a36'
-}
 const jira = new Jira(config)
 const timer = new Timer()
 const shotPath = process.env.ATELIER_SHOT
@@ -289,10 +280,10 @@ const actions = {
   openUrl: ({ url }) => launch.openUrl(url),
 
   setTheme({ theme }) {
-    if (!Object.hasOwn(THEMES, theme)) throw new Error(`Unknown theme ${theme}`)
+    if (!THEMES.some(t => t.id === theme)) throw new Error(`Unknown theme ${theme}`)
     config.theme = theme === 'default' ? null : theme
     configModule.save({ theme: config.theme })
-    win.setBackgroundColor(THEMES[theme])
+    win.setBackgroundColor(themeNamed(theme).terminal.background)
   },
 
   setEditor({ command }) {
@@ -736,7 +727,7 @@ function createWindow() {
     minHeight: 420,
     show: !shotPath,
     frame: !wm.desktop,
-    backgroundColor: THEMES[config.theme] || THEMES.default,
+    backgroundColor: themeNamed(config.theme).terminal.background,
     title: 'Atelier',
     autoHideMenuBar: true,
     webPreferences: {
