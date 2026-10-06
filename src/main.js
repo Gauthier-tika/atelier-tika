@@ -107,27 +107,16 @@ function jiraSettings() {
   }
 }
 
-const QUALIF_TEXT = ['label', 'url', 'branch', 'base', 'repo', 'workflow', 'jiraField']
-
 function qualifSettings() {
   const settings = config.qualifSettings || configModule.cleanQualif({})
   return {
     enabled: Boolean(config.qualif),
+    max: configModule.QUALIF_MAX,
     values: { ...settings, inputs: Object.entries(settings.inputs).map(([key, value]) => `${key}=${value}`).join('\n') },
     defaultRepo: config.githubRepo,
     cache: settings.cache?.commands.map(command => command.join(' ')) || [],
     fields: data.jiraFields
   }
-}
-
-function parseInputs(text) {
-  const inputs = {}
-  for (const line of String(text || '').split('\n').map(l => l.trim()).filter(Boolean)) {
-    const match = line.match(/^([\w-]+)\s*=\s*(.*)$/)
-    if (!match) throw new Error(`Write each workflow input as name=value, not "${line}"`)
-    inputs[match[1]] = match[2]
-  }
-  return inputs
 }
 
 function state() {
@@ -283,6 +272,17 @@ function spawnRun(run, args) {
   })
 }
 
+const reloads = {
+  jira() {
+    jira.qualifOptions = null
+    loaders.jira()
+  },
+  deploys() {
+    data.deploys = null
+    loaders.deploys()
+  }
+}
+
 const actions = {
   refresh: () => refreshAll(),
 
@@ -346,55 +346,10 @@ const actions = {
     return `Atelier now sorts your tickets by the columns of ${board.name}`
   },
 
-  jiraUnassigned({ columns }) {
-    config.unassignedColumns = (Array.isArray(columns) ? columns : []).filter(c => typeof c === 'string')
-    configModule.save({ unassignedColumns: config.unassignedColumns })
-    loaders.jira()
-  },
-
-  jiraMine({ columns }) {
-    config.mineColumns = Array.isArray(columns) ? columns.filter(c => typeof c === 'string') : null
-    configModule.save({ mineColumns: config.mineColumns })
-    push()
-  },
-
-  jiraFilters({ filters }) {
-    if (!Array.isArray(filters) || filters.some(f => !String(f?.label || '').trim())) throw new Error('Give every filter a name')
-    config.filters = configModule.cleanFilters(filters)
-    configModule.save({ filters: config.filters })
-    push()
-  },
-
-  qualifSetting({ field, value }) {
-    const raw = { ...(configModule.readUser().qualif || {}) }
-    if (field === 'enabled') {
-      if (value) delete raw.enabled
-      else raw.enabled = false
-    } else if (field === 'count') {
-      const count = Number(value)
-      if (!Number.isInteger(count) || count < 1 || count > 99) throw new Error('The number of qualifs goes from 1 to 99')
-      raw.count = count
-    } else if (field === 'inputs') {
-      const inputs = parseInputs(value)
-      if (Object.keys(inputs).length) raw.inputs = inputs
-      else delete raw.inputs
-    } else if (QUALIF_TEXT.includes(field)) {
-      const text = String(value ?? '').trim()
-      if (text) raw[field] = text
-      else delete raw[field]
-    } else throw new Error(`Unknown qualif setting ${field}`)
-    configModule.save({ qualif: raw })
-    config.qualifSettings = configModule.cleanQualif(raw)
-    config.qualif = raw.enabled === false ? null : config.qualifSettings
+  setSetting({ key, value }) {
+    const reload = configModule.setSetting(config, key, value)
     qualifs.settings = config.qualif
-    if (['enabled', 'jiraField'].includes(field)) {
-      jira.qualifOptions = null
-      loaders.jira()
-    }
-    if (['enabled', 'branch', 'repo', 'workflow'].includes(field)) {
-      data.deploys = null
-      loaders.deploys()
-    }
+    for (const name of reload) reloads[name]()
     push()
   },
 

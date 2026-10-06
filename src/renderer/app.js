@@ -615,9 +615,9 @@ function globalSettings(state) {
     </div>`
 }
 
-function qualifField({ field, label, value, placeholder = '', hint = '', type = 'text' }) {
+function qualifField({ field, label, value, placeholder = '', hint = '', type = 'text', max }) {
   return `<label class="setting-field"><span class="t">${esc(label)}</span>
-    <input type="${type}" data-qualif-field="${field}" value="${esc(value ?? '')}" placeholder="${esc(placeholder)}" ${type === 'number' ? 'min="1" max="99"' : ''} autocomplete="off" spellcheck="false">
+    <input type="${type}" data-setting="qualif.${field}" value="${esc(value ?? '')}" placeholder="${esc(placeholder)}" ${type === 'number' ? `min="1" max="${max}"` : ''} autocomplete="off" spellcheck="false">
     ${hint ? `<span class="hint">${hint}</span>` : ''}</label>`
 }
 
@@ -626,7 +626,7 @@ function qualifJiraField(settings, connected) {
   const fields = settings.fields || []
   const known = !current || fields.some(field => field.id === current)
   return `<label class="setting-field"><span class="t">Jira field</span>
-    <select data-qualif-field="jiraField" ${connected && settings.fields ? '' : 'disabled'}>
+    <select data-setting="qualif.jiraField" ${connected && settings.fields ? '' : 'disabled'}>
       <option value="">None</option>
       ${known ? '' : `<option value="${esc(current)}" selected>${esc(current)}</option>`}
       ${fields.map(field => `<option value="${esc(field.id)}" ${field.id === current ? 'selected' : ''}>${esc(field.name)}</option>`).join('')}
@@ -639,20 +639,20 @@ function qualifSettings(state) {
   const v = settings.values
   const parts = [`<h3>Qualifs</h3>
     <label class="setting-row toggle">
-      <input type="checkbox" data-pick="qualif-enabled" ${settings.enabled ? 'checked' : ''}>
+      <input type="checkbox" data-setting="qualif.enabled" ${settings.enabled ? 'checked' : ''}>
       <span>Show the ${esc(v.label)}s tab: test environments that each get a branch rebuilt from a base branch plus the pull requests of their tickets</span>
     </label>`]
   if (!settings.enabled) return parts.join('')
   parts.push(`<div class="setting-fields">
     ${qualifField({ field: 'label', label: 'Name', value: v.label, placeholder: 'Qualif' })}
-    ${qualifField({ field: 'count', label: 'How many', value: v.count, type: 'number', hint: 'Numbered from 1' })}
+    ${qualifField({ field: 'count', label: 'How many', value: v.count, type: 'number', max: settings.max, hint: 'Numbered from 1' })}
     ${qualifField({ field: 'url', label: 'Page', value: v.url, placeholder: 'https://qualif{n}.example.com', hint: '<span class="code">{n}</span> becomes the number' })}
     ${qualifField({ field: 'base', label: 'Base branch', value: v.base, placeholder: 'main' })}
     ${qualifField({ field: 'branch', label: 'Branch', value: v.branch, placeholder: 'qualif-{login}-{n}', hint: 'Force-pushed on each sync. <span class="code">{login}</span> becomes your GitHub login' })}
     ${qualifField({ field: 'repo', label: 'GitHub repository', value: v.repo, placeholder: settings.defaultRepo })}
     ${qualifField({ field: 'workflow', label: 'Deploy workflow', value: v.workflow, placeholder: 'deploy.yml', hint: 'Run on the pushed branch. Without it, Sync only pushes' })}
     <label class="setting-field"><span class="t">Workflow inputs</span>
-      <textarea data-qualif-field="inputs" rows="2" placeholder="environment=qualif{n}" spellcheck="false">${esc(v.inputs)}</textarea>
+      <textarea data-setting="qualif.inputs" rows="2" placeholder="environment=qualif{n}" spellcheck="false">${esc(v.inputs)}</textarea>
       <span class="hint">One <span class="code">name=value</span> per line</span></label>
     ${qualifJiraField(settings, state.jira.connected)}
   </div>
@@ -1289,6 +1289,12 @@ function setHiddenRepos(repos) {
   render()
 }
 
+async function saveSetting(key, value) {
+  const result = await act('setSetting', { key, value })
+  if (!result?.ok) renderSettings(ui.state)
+  return result
+}
+
 function askConfirm(confirm, button) {
   ui.confirm = confirm
   render()
@@ -1397,13 +1403,13 @@ const handlers = {
   },
   async 'filter-add'() {
     const filters = ui.state.jira.filters
-    const result = await act('jiraFilters', { filters: [...filters, { label: `Filter ${filters.length + 1}`, columns: [] }] })
+    const result = await saveSetting('filters', [...filters, { label: `Filter ${filters.length + 1}`, columns: [] }])
     if (!result?.ok) return
     const input = document.querySelector(`[data-filter-label="${filters.length}"]`)
     input?.focus()
     input?.select()
   },
-  'filter-remove': el => act('jiraFilters', { filters: ui.state.jira.filters.filter((_, index) => index !== Number(el.dataset.index)) }),
+  'filter-remove': el => saveSetting('filters', ui.state.jira.filters.filter((_, index) => index !== Number(el.dataset.index))),
   'set-editor': el => {
     if (el.getAttribute('aria-checked') !== 'true') act('setEditor', { command: el.dataset.command })
   },
@@ -1441,16 +1447,13 @@ document.addEventListener('change', event => {
   const jira = ui.state?.jira
   if (event.target.dataset?.filterLabel) {
     const index = Number(event.target.dataset.filterLabel)
-    act('jiraFilters', { filters: jira.filters.map((filter, i) => i === index ? { ...filter, label: event.target.value } : filter) })
-      .then(result => { if (!result?.ok) renderSettings(ui.state) })
+    saveSetting('filters', jira.filters.map((filter, i) => i === index ? { ...filter, label: event.target.value } : filter))
     return
   }
-  const qualifSetting = event.target.dataset?.qualifField
-  if (qualifSetting || pick === 'qualif-enabled') {
-    const field = qualifSetting || 'enabled'
-    const value = field === 'enabled' ? event.target.checked : event.target.value
+  const setting = event.target.dataset?.setting
+  if (setting) {
     if (event.target.tagName === 'SELECT') event.target.blur()
-    act('qualifSetting', { field, value }).then(result => { if (!result?.ok) renderSettings(ui.state) })
+    saveSetting(setting, event.target.type === 'checkbox' ? event.target.checked : event.target.value)
     return
   }
   if (pick === 'jira-board') {
@@ -1464,16 +1467,16 @@ document.addEventListener('change', event => {
     const all = jira.columns.map(c => c.id).filter(c => !taken.has(c))
     const current = jira.mineColumns || all
     const next = event.target.checked ? [...current.filter(c => c !== column), column] : current.filter(c => c !== column)
-    act('jiraMine', { columns: all.every(c => next.includes(c)) ? null : next })
+    saveSetting('mineColumns', all.every(c => next.includes(c)) ? null : next)
     return
   }
   if (pick === 'unassigned-column' || pick === 'filter-column') {
     const column = event.target.dataset.column
     const toggle = list => event.target.checked ? [...list.filter(c => c !== column), column] : list.filter(c => c !== column)
-    if (pick === 'unassigned-column') act('jiraUnassigned', { columns: toggle(jira.unassignedColumns) })
+    if (pick === 'unassigned-column') saveSetting('unassignedColumns', toggle(jira.unassignedColumns))
     else {
       const index = Number(event.target.dataset.index)
-      act('jiraFilters', { filters: jira.filters.map((filter, i) => i === index ? { ...filter, columns: toggle(filter.columns) } : filter) })
+      saveSetting('filters', jira.filters.map((filter, i) => i === index ? { ...filter, columns: toggle(filter.columns) } : filter))
     }
     return
   }
