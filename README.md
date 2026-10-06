@@ -2,14 +2,14 @@
 
 An Electron desktop app that puts my day-to-day Tikamoon work in one window: Jira tickets, Claude Code sessions, GitHub PRs and reviews, qualif environments and time tracking.
 
-It is built for one setup (Linux with Hyprland, Ghostty and Sapling) and is not meant as a general-purpose tool. It still runs without Hyprland or Sapling: window switching and `sl web` are then unavailable, and git takes over from Sapling.
+It is built for one setup (Linux with Hyprland, Ghostty and Sapling) and is not meant as a general-purpose tool. It also runs on Sway, GNOME and other desktops, and without Sapling. Away from Hyprland and Sway, Atelier gets a normal title bar but cannot switch to other windows. Without Sapling, `sl web` is unavailable and git takes over.
 
 ![Atelier with demo data](demo/screenshot.png)
 
 ## What it does
 
 - **Tickets**: my board, the MEPP and MEP columns and unassigned tickets from Jira. Move a ticket between columns, flag it, take an unassigned one, log time against it with a timer.
-- **Claude sessions**: start or resume a Claude Code session on a ticket in an embedded terminal. Sessions already running in Ghostty are shown too, and Atelier switches to their window.
+- **Claude sessions**: start or resume a Claude Code session on a ticket in an embedded terminal. Sessions already running in another terminal are shown too, and on Hyprland or Sway Atelier switches to their window.
 - **Splits**: Ghostty-style panes inside a session. **Open nvim** puts nvim, or the [editor](#editor) you set, on the left of Claude, and extra shells split beside it. A pane closes when its program exits.
 - **PRs and reviews**: GitHub PRs and their checks, rebase a ticket's PR, start a Claude review of a PR.
 - **Qualifs**: which qualif environment holds which ticket, sync the Jira Qualif field, clear a qualif's caches.
@@ -23,7 +23,8 @@ It is built for one setup (Linux with Hyprland, Ghostty and Sapling) and is not 
 - An editor: `nvim` by default, any other through `editor` (see [Editor](#editor))
 - `kubectl` with access to the qualif cluster, for the qualif actions
 - Optional: `sl` (Sapling), for `sl web`; without it Atelier uses git
-- Optional, to focus and open windows: `hyprctl`, `ghostty` and `uwsm-app` on Hyprland, or `swaymsg` and `alacritty` on Sway
+- Optional, to switch windows: `hyprctl` on Hyprland or `swaymsg` on Sway
+- Optional, a [terminal](#terminal): Ghostty (through `uwsm-app` on Hyprland) by default, Alacritty on Sway
 - Jira credentials in `~/.config/jira-time/env`:
 
   ```sh
@@ -42,6 +43,12 @@ To launch it from anywhere, link the launcher onto your `PATH`. It finds the app
 
 ```sh
 ln -s "$PWD/bin/atelier" ~/.local/bin/atelier
+```
+
+On GNOME, KDE and other desktops with an app launcher, also install the desktop entry. It runs `atelier` from your `PATH`, so link the launcher first:
+
+```sh
+cp atelier.desktop ~/.local/share/applications/
 ```
 
 ## Bundled scripts
@@ -110,6 +117,22 @@ A graphical editor opens in its own window (`"mode": "window"`), and the session
 
 ```json
 { "editor": { "name": "PhpStorm", "command": "phpstorm", "args": ["{dir}"], "mode": "window" } }
+```
+
+`name` defaults to the command's file name.
+
+### Terminal
+
+Atelier opens a Claude session in its own window with the terminal under `"terminal"` in `~/.config/atelier/config.json`, and names that terminal when it shows sessions running outside Atelier. Without one, it uses Ghostty through `uwsm-app` on Hyprland, Alacritty on Sway and Ghostty elsewhere.
+
+In `args`, `{dir}` becomes the session directory, `{shell}` your `$SHELL` and `{command}` the command to run in it. Pass `{command}` to the shell with `-ic`, so that your `PATH` and aliases apply:
+
+```json
+{ "terminal": { "name": "kitty", "command": "kitty", "args": ["--directory", "{dir}", "{shell}", "-ic", "{command}"] } }
+```
+
+```json
+{ "terminal": { "name": "Ptyxis", "command": "ptyxis", "args": ["--new-window", "-d", "{dir}", "--", "{shell}", "-ic", "{command}"] } }
 ```
 
 `name` defaults to the command's file name.

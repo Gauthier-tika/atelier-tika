@@ -2,7 +2,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const { run, detach } = require('./run')
-const { editorArgs } = require('./config')
+const { editorArgs, terminalArgs } = require('./config')
 const wm = require('./wm')
 
 const quote = value => `'${String(value).replace(/'/g, `'\\''`)}'`
@@ -41,10 +41,10 @@ function directoryFor(config, repo, cwd) {
   return fs.existsSync(config.repoDir) ? config.repoDir : os.homedir()
 }
 
-function terminal(directory, claudeArgs) {
+function terminal(config, directory, claudeArgs) {
   const shell = process.env.SHELL || '/bin/zsh'
   const command = `claude ${claudeArgs.map(quote).join(' ')}; exec ${quote(shell)}`
-  wm.openTerminal(directory, shell, command)
+  detach(config.terminal.command, terminalArgs(config.terminal, { dir: directory, shell, command }), { cwd: directory })
   return 'terminal'
 }
 
