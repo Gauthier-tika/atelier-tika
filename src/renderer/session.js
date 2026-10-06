@@ -478,14 +478,14 @@ function sessionDetail(t) {
 function renderNavSessions() {
   const sessions = ui.state?.terminals.filter(t => !t.parent) || []
   const inSession = document.body.dataset.view === 'session'
-  $('nav-sessions').innerHTML = sessions.length ? `<h2>Open sessions <span class="count code">${sessions.length}</span></h2>
+  paint($('nav-sessions'), sessions.length ? `<h2>Open sessions <span class="count code">${sessions.length}</span></h2>
     <div class="session-list">${sessions.map(t => {
       const [color, label] = sessionStatus(t)
       const current = inSession && t.id === view.active
       const mark = t.kind === 'claude' ? '<span class="dot"></span>' : `<span class="glyph">${isEditor(t) ? G.edit : G.terminal}</span>`
       return `<button class="${color}" data-act="open-session" data-id="${esc(t.id)}" aria-current="${current ? 'page' : 'false'}" title="${esc(`${t.label} (${label})`)}">
         ${mark}<span class="name code">${esc(sessionName(t))}</span><span class="state">${t.kind === 'claude' || t.exited ? esc(label) : ''}</span><span class="detail">${esc(sessionDetail(t))}</span></button>`
-    }).join('')}</div>` : ''
+    }).join('')}</div>` : '')
 }
 
 const shellQuote = value => `'${String(value).replace(/'/g, `'\\''`)}'`
@@ -678,24 +678,24 @@ function renderSession() {
       ${runOf(terminal) ? runQuestion(runOf(terminal)) : ''}
     </div>`
   }
-  $('session-bar').innerHTML = context
+  paint($('session-bar'), context)
 
   const ended = $('ended')
   if (view.confirmEnd === terminal.id && !terminal.exited) {
     ended.hidden = false
-    ended.innerHTML = `<span>${shell ? 'Close this terminal?' : 'End this Claude session?'} Its split panes close with it.</span>
+    paint(ended, `<span>${shell ? 'Close this terminal?' : 'End this Claude session?'} Its split panes close with it.</span>
       <button class="btn primary" data-act="end-session" data-id="${esc(terminal.id)}">${shell ? 'Close terminal' : 'End session'}</button>
-      <button class="btn quiet" data-act="keep-session">Keep it running</button>`
+      <button class="btn quiet" data-act="keep-session">Keep it running</button>`)
   } else if (terminal.exited) {
     ended.hidden = false
-    ended.innerHTML = `<span>${shell ? 'The shell has exited.' : 'Claude has exited.'}</span>
+    paint(ended, `<span>${shell ? 'The shell has exited.' : 'Claude has exited.'}</span>
       ${terminal.key ? `<button class="btn primary" data-act="claude" data-key="${esc(terminal.key)}">Resume the session</button>` : ''}
       ${terminal.prId ? `<button class="btn primary" data-act="review-claude" data-id="${esc(terminal.prId)}">Start the review again</button>` : ''}
       ${runOf(terminal)?.session ? `<button class="btn primary" data-act="run-resume" data-id="${esc(terminal.runId)}">Resume the session</button>` : ''}
-      <button class="btn quiet" data-act="end-session" data-id="${esc(terminal.id)}">Close</button>`
+      <button class="btn quiet" data-act="end-session" data-id="${esc(terminal.id)}">Close</button>`)
   } else {
     ended.hidden = true
-    ended.innerHTML = ''
+    paint(ended, '')
   }
 }
 

@@ -1,10 +1,10 @@
-function renderSettings(state) {
+function renderSettings(state, force = false) {
   const section = ui.settingsTab
-  $('settings').innerHTML = `<h2 id="settings-title">Settings</h2>
+  paint($('settings'), `<h2 id="settings-title">Settings</h2>
     <div class="subtabs" role="tablist" aria-label="Settings sections">${SETTINGS_TABS.map(tab => `
       <button role="tab" id="settings-tab-${tab.id}" aria-selected="${tab.id === section}" aria-controls="settings-body" data-act="settings-tab" data-section="${tab.id}">${tab.label}</button>`).join('')}
     </div>
-    <div id="settings-body" role="tabpanel" aria-labelledby="settings-tab-${section}">${(SETTINGS_TABS.find(tab => tab.id === section) || SETTINGS_TABS[0]).render(state)}</div>`
+    <div id="settings-body" role="tabpanel" aria-labelledby="settings-tab-${section}">${(SETTINGS_TABS.find(tab => tab.id === section) || SETTINGS_TABS[0]).render(state)}</div>`, force)
 }
 
 const SETTINGS_TABS = [
@@ -158,7 +158,7 @@ function jiraSettings(state) {
 
 async function saveSetting(key, value) {
   const result = await act('setSetting', { key, value })
-  if (!result?.ok) renderSettings(ui.state)
+  if (!result?.ok) renderSettings(ui.state, true)
   return result
 }
 
@@ -169,18 +169,18 @@ Object.assign(handlers, {
     if (!result?.ok) return
     document.documentElement.dataset.theme = theme === 'default' ? '' : theme
     applyTerminalTheme()
-    renderSettings(ui.state)
+    renderSettings(ui.state, true)
   },
   'choose-dev-dir': () => act('chooseDevDir', {}, 'choose-dev-dir'),
   'go-settings': () => {
     ui.settingsTab = 'tickets'
-    renderSettings(ui.state)
+    renderSettings(ui.state, true)
     setTab('settings')
   },
   'settings-tab'(el) {
     ui.settingsTab = SETTINGS_TABS.some(tab => tab.id === el.dataset.section) ? el.dataset.section : 'global'
     store('atelier.settingsTab', ui.settingsTab)
-    renderSettings(ui.state)
+    renderSettings(ui.state, true)
   },
   async 'filter-add'() {
     const filters = ui.state.jira.filters
@@ -228,7 +228,7 @@ Object.assign(forms, {
     const result = await act('jiraConnect', { base: draft.base ?? jira.base, email: draft.email ?? jira.email, token: draft.token ?? '' }, 'jira-connect')
     if (result?.ok) {
       ui.jiraDraft = {}
-      renderSettings(ui.state)
+      renderSettings(ui.state, true)
     }
   }
 })

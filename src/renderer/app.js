@@ -70,6 +70,14 @@ const ui = {
 
 const $ = id => document.getElementById(id)
 
+const painted = new WeakMap()
+
+function paint(el, html, force = false) {
+  if (!force && painted.get(el) === html) return
+  painted.set(el, html)
+  el.innerHTML = html
+}
+
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch])
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
@@ -195,12 +203,12 @@ function navCount(state, tab) {
 
 function renderNav() {
   const listing = document.body.dataset.view === 'list'
-  $('tabs').innerHTML = navItems(ui.state).map(item => {
+  paint($('tabs'), navItems(ui.state).map(item => {
     const current = listing && ui.tab === item.tab
     const count = navCount(ui.state, item.tab)
     return `<button data-tab="${item.tab}" class="${item.sub ? 'sub' : ''}" aria-current="${current ? 'page' : 'false'}" title="${esc(item.label)}">
       <span class="glyph">${G[item.glyph]}</span><span class="t">${esc(item.label)}</span><span class="count code">${count || ''}</span></button>`
-  }).join('')
+  }).join(''))
 }
 
 function render() {

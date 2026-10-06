@@ -216,7 +216,7 @@ function renderMine(state) {
         <span class="meta">${ago(t.startedAt)}</span>
       </div>`).join(''))
   }
-  $('mine').innerHTML = parts.join('')
+  paint($('mine'), parts.join(''))
 }
 
 function syncFilterPanes(state) {
@@ -241,7 +241,7 @@ function renderStage(state, stage, title) {
   parts.push(tickets.length
     ? ticketList(tickets, state.columns)
     : `<p class="empty">${state.loading.jira ? 'Loading your Jira tickets…' : `None of your tickets is in ${esc(title)}.`}</p>`)
-  $(stage).innerHTML = parts.join('')
+  paint($(stage), parts.join(''))
 }
 
 function unassignedRow(ticket, inProgress) {
@@ -277,7 +277,7 @@ function renderUnassigned(state) {
   parts.push(tickets.length
     ? tickets.map(t => unassignedRow(t, state.inProgress)).join('')
     : `<p class="empty">${state.loading.jira ? 'Loading the board…' : 'Every open ticket on the board has someone on it.'}</p>`)
-  $('unassigned').innerHTML = parts.join('')
+  paint($('unassigned'), parts.join(''))
 }
 
 Object.assign(handlers, {

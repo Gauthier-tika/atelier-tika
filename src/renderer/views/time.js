@@ -111,7 +111,7 @@ function renderTime(state) {
       </article>`
     }).join(''))
   }
-  $('time').innerHTML = parts.join('')
+  paint($('time'), parts.join(''))
 }
 
 Object.assign(handlers, {

@@ -123,7 +123,7 @@ function qualifCard(state, q) {
 function renderQualifs(state) {
   const q = state.qualifs
   if (!q) {
-    $('qualifs').innerHTML = ''
+    paint($('qualifs'), '')
     return
   }
   const label = esc(q.label)
@@ -137,7 +137,7 @@ function renderQualifs(state) {
   parts.push(`<p class="repos">Each ${label.toLowerCase()} gets its own branch, rebuilt from ${esc(q.base)} plus the open pull requests of its tickets, in this order, by <span class="code">qualif-sync</span>.${q.deploys ? ' One with a single pull request deploys that pull request\'s branch as it is.' : ''}</p>`)
   if (state.errors.github) parts.push(`<p class="notice">GitHub did not answer: ${esc(state.errors.github)}. The pull requests below may be out of date.</p>`)
   parts.push(q.items.length ? q.items.map(item => qualifCard(state, item)).join('') : `<p class="empty">Add the ${label.toLowerCase()}s you use, then pick the tickets that go on each one.</p>`)
-  $('qualifs').innerHTML = parts.join('')
+  paint($('qualifs'), parts.join(''))
   for (const pre of $('qualifs').querySelectorAll('.qualif.running pre')) pre.scrollTop = pre.scrollHeight
 }
 

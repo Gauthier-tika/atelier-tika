@@ -78,7 +78,7 @@ function renderReviews(state) {
       }
     }
   }
-  $('reviews').innerHTML = parts.join('')
+  paint($('reviews'), parts.join(''))
 }
 
 function setHiddenRepos(repos) {

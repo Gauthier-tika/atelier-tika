@@ -2,14 +2,14 @@ function renderLaunch(state) {
   const active = document.activeElement
   if (active?.tagName === 'SELECT' && $('launch').contains(active)) return
   if (!state.repos.length) {
-    $('launch').innerHTML = `
+    paint($('launch'), `
       <p class="launch-empty">No repository in <span class="code">${esc(state.devDir)}</span></p>
-      <button class="btn launch-claude" data-act="choose-dev-dir" title="Pick the folder that holds your repositories"><span class="glyph">${G.folder}</span><span class="t">Choose the folder</span></button>`
+      <button class="btn launch-claude" data-act="choose-dev-dir" title="Pick the folder that holds your repositories"><span class="glyph">${G.folder}</span><span class="t">Choose the folder</span></button>`)
     return
   }
   const repo = state.repos.includes(ui.repo) ? ui.repo : state.repos[0]
   const starting = ui.busy.has('sl-web')
-  $('launch').innerHTML = `
+  paint($('launch'), `
     <label class="repo" for="repo-pick" title="Where new sessions, terminals and ${esc(state.editor.name)} open">
       <span class="glyph">${G.folder}</span>
       <select id="repo-pick" data-pick="repo">${state.repos.map(name => `<option ${name === repo ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select>
@@ -24,7 +24,7 @@ function renderLaunch(state) {
       const live = state.runs.some(run => run.workflow === w.id && run.live)
       return `<button class="tool" data-act="workflow-run" data-id="${esc(w.id)}" title="${esc(live ? `Open the running ${w.label}` : w.description || `Start ${w.label}`)}">
         <span class="glyph">${G.workflow}</span><span class="t">${esc(w.label)}</span>${live ? '<span class="state">Running</span>' : ''}</button>`
-    }).join('')}</div>` : ''}`
+    }).join('')}</div>` : ''}`)
 }
 
 const pickedRepo = () => $('repo-pick')?.value || ui.state.repos[0]
