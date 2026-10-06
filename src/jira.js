@@ -15,6 +15,7 @@ class Jira {
   }
 
   reset() {
+    this.savedAccount = undefined
     this.flagField = null
     this.flagOption = null
     this.columns = null
@@ -25,6 +26,11 @@ class Jira {
   }
 
   account() {
+    if (this.savedAccount === undefined) this.savedAccount = this.readAccount()
+    return this.savedAccount
+  }
+
+  readAccount() {
     const values = {}
     let text
     try {
@@ -47,6 +53,7 @@ class Jira {
 
   saveAccount(file, { base, email, token }) {
     writeAtomic(file, `JIRA_BASE=${base}\nATLASSIAN_EMAIL=${email}\nATLASSIAN_TOKEN=${token}\n`, { mode: 0o600 })
+    this.savedAccount = undefined
   }
 
   async request(method, path, { params, body, base = this.config.jiraBase, account } = {}) {

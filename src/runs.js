@@ -16,6 +16,7 @@ class Runs {
   constructor(onChange) {
     this.onChange = onChange
     this.marks = readJson(marksFile, {})
+    this.files = null
   }
 
   mark(id, patch) {
@@ -43,21 +44,19 @@ class Runs {
       events: []
     }
     writeJson(path.join(dir, `${run.id}.json`), run)
+    this.files = null
     this.onChange()
     return run
   }
 
   read() {
+    if (this.files) return this.files
     let names = []
     try {
       names = fs.readdirSync(dir).filter(name => name.endsWith('.json'))
     } catch {}
-    return names.map(name => readJson(path.join(dir, name), null)).filter(run => run?.id)
-  }
-
-  list() {
     const old = Date.now() - KEEP_MS
-    return this.read().filter(run => {
+    this.files = names.map(name => readJson(path.join(dir, name), null)).filter(run => run?.id).filter(run => {
       if (run.startedAt >= old) return true
       fs.rmSync(path.join(dir, `${run.id}.json`), { force: true })
       if (this.marks[run.id]) {
@@ -65,7 +64,12 @@ class Runs {
         writeJson(marksFile, this.marks)
       }
       return false
-    }).map(run => {
+    })
+    return this.files
+  }
+
+  list() {
+    return this.read().map(run => {
       const marks = this.marks[run.id] || {}
       const answered = run.question && marks.answered === run.question.asked
       const status = marks.ended && LIVE.includes(run.status) ? 'ended' : answered ? 'running' : run.status
@@ -104,7 +108,10 @@ class Runs {
   }
 
   watch() {
-    watchDir(dir, this.onChange)
+    watchDir(dir, () => {
+      this.files = null
+      this.onChange()
+    })
   }
 }
 

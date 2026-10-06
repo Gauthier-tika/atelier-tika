@@ -66,7 +66,7 @@ const qualifs = new Qualifs(schedulePush, config.qualif)
 const runs = new Runs(schedulePush)
 terminals.onExit = item => { if (item.runId) runs.terminalExited(item.id) }
 
-function repos() {
+function listRepos() {
   const devDir = config.devDir
   const dirs = config.repos?.length ? config.repos.map(configModule.expand) : (() => {
     try {
@@ -79,6 +79,9 @@ function repos() {
   const list = dirs.map(dir => ({ name: path.basename(dir), dir }))
   return list.sort((a, b) => (b.dir === config.repoDir) - (a.dir === config.repoDir) || a.name.localeCompare(b.name))
 }
+
+let repoList = null
+const repos = () => repoList ||= listRepos()
 
 function repoNamed(name) {
   const repo = repos().find(r => r.name === name)
@@ -126,40 +129,79 @@ function parseInputs(text) {
   return inputs
 }
 
-const current = () => ({ ...compose({ ...data, qualifs: qualifs.list(), runs: runs.list() }, timer.state, config, terminals.list()), workflows: config.workflows.map(({ id, label, description }) => ({ id, label, description: description || '' })), repos: repos().map(r => r.name), sapling: data.sapling, editor: { name: config.editor.name, mode: config.editor.mode }, editors: editorChoices(), terminal: { name: config.terminal.name, switching: Boolean(wm.desktop) }, devDir: configModule.tilde(config.devDir), reposPinned: Boolean(config.repos?.length), jira: jiraSettings(), qualifSettings: qualifSettings() })
+function state() {
+  return {
+    ...compose({ ...data, qualifs: qualifs.list(), runs: runs.list() }, timer.state, config, terminals.list()),
+    workflows: config.workflows.map(({ id, label, description }) => ({ id, label, description: description || '' })),
+    repos: repos().map(r => r.name),
+    sapling: data.sapling,
+    editor: { name: config.editor.name, mode: config.editor.mode },
+    editors: editorChoices(),
+    terminal: { name: config.terminal.name, switching: Boolean(wm.desktop) },
+    devDir: configModule.tilde(config.devDir),
+    reposPinned: Boolean(config.repos?.length),
+    jira: jiraSettings(),
+    qualifSettings: qualifSettings()
+  }
+}
+
+function ticketView(key) {
+  const view = state().tickets.find(t => t.key === key)
+  if (!view) throw new Error(`${key} is not in your list`)
+  return view
+}
 
 const qualifBranches = () => data.github ? [...new Set(qualifs.list().map(q => syncedBranch(config.qualif, data.github.viewer, q)).filter(Boolean))] : []
 
 function push() {
-  send('state', current())
+  clearTimeout(pushTimer)
+  pushTimer = null
+  send('state', state())
 }
 
-async function load(name, task, apply) {
+const inFlight = {}
+
+function load(name, task, apply) {
+  const running = inFlight[name]
+  if (running) return running.again ||= running.done.then(() => load(name, task, apply))
+  const entry = {}
+  inFlight[name] = entry
   data.loading[name] = true
-  push()
-  try {
-    apply(await task())
-    delete data.errors[name]
-    data.updated[name] = Date.now()
-  } catch (error) {
-    data.errors[name] = error.message.split('\n')[0]
-  } finally {
-    data.loading[name] = false
-    push()
-  }
+  schedulePush()
+  entry.done = (async () => {
+    try {
+      apply(await task())
+      delete data.errors[name]
+      data.updated[name] = Date.now()
+    } catch (error) {
+      data.errors[name] = error.message.split('\n')[0]
+    } finally {
+      delete inFlight[name]
+      data.loading[name] = false
+      schedulePush()
+    }
+  })()
+  return entry.done
 }
 
-let jiraLoading = null
+const reconcile = new Set()
 const loaders = {
-  jira: (reconcile = []) => jiraLoading = load('jira', async () => [await jira.boards(), await jira.boardColumns(), await jira.tickets(reconcile), await jira.unassigned(), await jira.optionFields().catch(() => null)], ([boards, columns, tickets, unassigned, fields]) => {
-    data.boards = boards
-    data.jiraFields = fields
-    data.columns = columns
-    data.tickets = tickets
-    data.unassigned = unassigned.filter(item => !tickets.some(t => t.key === item.key))
-  }),
+  jira: (ids = []) => {
+    ids.forEach(id => reconcile.add(id))
+    return load('jira', async () => {
+      const ids = [...reconcile]
+      reconcile.clear()
+      return [await jira.boards(), await jira.boardColumns(), await jira.tickets(ids), await jira.unassigned(), await jira.optionFields().catch(() => null)]
+    }, ([boards, columns, tickets, unassigned, fields]) => {
+      data.boards = boards
+      data.jiraFields = fields
+      data.columns = columns
+      data.tickets = tickets
+      data.unassigned = unassigned.filter(item => !tickets.some(t => t.key === item.key))
+    })
+  },
   github: () => load('github', async () => {
-    if (!data.tickets) await jiraLoading
+    if (!data.tickets) await inFlight.jira?.done
     return github.pullRequests(config, tickets().map(t => t.key))
   }, result => { data.github = result }).then(() => loaders.deploys()),
   deploys: () => load('deploys', () => github.qualifDeploys(config, qualifBranches()), result => { data.deploys = result }),
@@ -170,7 +212,7 @@ async function refreshClaude() {
   data.live = await claude.live(config)
   data.past = claude.past()
   markOpenSessionSeen()
-  push()
+  schedulePush()
 }
 
 let openView = null
@@ -185,7 +227,11 @@ function markOpenSessionSeen() {
   return true
 }
 
+let refreshedAt = 0
+
 function refreshAll() {
+  repoList = null
+  refreshedAt = Date.now()
   return Promise.all([loaders.jira(), loaders.github(), loaders.time(), refreshClaude()])
 }
 
@@ -352,6 +398,7 @@ const actions = {
     })
     if (canceled || !filePaths.length) return
     config.devDir = filePaths[0]
+    repoList = null
     const shown = configModule.tilde(config.devDir)
     configModule.save({ devDir: shown })
     push()
@@ -361,8 +408,7 @@ const actions = {
 
   async claudeOpen({ key, fresh }) {
     data.past = claude.past()
-    const view = current().tickets.find(t => t.key === key)
-    if (!view) throw new Error(`${key} is not in your list`)
+    const view = ticketView(key)
     const id = `ticket:${key}`
     const embedded = terminals.get(id)
     if (embedded && !embedded.exited && !fresh) return { view: id }
@@ -392,8 +438,7 @@ const actions = {
   },
 
   async rebase({ key }) {
-    const view = current().tickets.find(t => t.key === key)
-    if (!view) throw new Error(`${key} is not in your list`)
+    const view = ticketView(key)
     const pr = view.rebasable
     if (!pr) throw new Error(`${key} has no open pull request in ${config.repoName}`)
     const id = `rebase:${key}`
@@ -766,13 +811,9 @@ function createWindow() {
   })
   win.loadFile(path.join(__dirname, 'renderer/index.html'), { query: config.theme ? { theme: config.theme } : {} })
 
-  let lastFocusRefresh = Date.now()
   win.on('focus', () => {
     if (markOpenSessionSeen()) push()
-    if (Date.now() - lastFocusRefresh > 60000) {
-      lastFocusRefresh = Date.now()
-      refreshAll()
-    }
+    if (Date.now() - refreshedAt > 60000) refreshAll()
   })
 }
 
@@ -835,7 +876,11 @@ app.whenReady().then(() => {
   refreshAll()
   claude.watch(refreshClaude)
   runs.watch()
-  setInterval(() => { loaders.jira(); loaders.github() }, config.pollSeconds * 1000)
+  setInterval(() => {
+    refreshedAt = Date.now()
+    loaders.jira()
+    loaders.github()
+  }, config.pollSeconds * 1000)
   setInterval(() => loaders.time(), 300000)
   setInterval(() => {
     if (Object.values(data.deploys || {}).some(d => d.status !== 'completed')) loaders.deploys()
