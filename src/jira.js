@@ -2,6 +2,8 @@ const fs = require('node:fs')
 const { run, env } = require('./run')
 const { writeAtomic } = require('./store')
 
+const minutes = seconds => `${Math.max(1, Math.round(seconds / 60))}m`
+
 function qualifNumber(value) {
   const text = typeof value === 'string' ? value : value?.value || ''
   const match = text.match(/(\d+)/)
@@ -279,42 +281,28 @@ class Jira {
     }
   }
 
-  async deleteLog(key, id) {
+  async changeTime(args, failure) {
     let output
     try {
-      output = await this.jiraTime(['delete', key, String(id)])
+      output = await this.jiraTime(args)
     } catch (error) {
       output = error.stdout
     }
     const data = JSON.parse(output || '{}')
-    if (!data.ok) throw new Error(data.error || `Could not delete the time on ${key}`)
+    if (!data.ok) throw new Error(data.error || failure)
     return data
   }
 
-  async updateLog(key, id, seconds) {
-    const minutes = Math.max(1, Math.round(seconds / 60))
-    let output
-    try {
-      output = await this.jiraTime(['update', key, String(id), `${minutes}m`])
-    } catch (error) {
-      output = error.stdout
-    }
-    const data = JSON.parse(output || '{}')
-    if (!data.ok) throw new Error(data.error || `Could not change the time on ${key}`)
-    return data
+  deleteLog(key, id) {
+    return this.changeTime(['delete', key, String(id)], `Could not delete the time on ${key}`)
   }
 
-  async log(key, seconds, date) {
-    const minutes = Math.max(1, Math.round(seconds / 60))
-    let output
-    try {
-      output = await this.jiraTime(['log', key, `${minutes}m`, ...(date ? [date] : [])])
-    } catch (error) {
-      output = error.stdout
-    }
-    const data = JSON.parse(output || '{}')
-    if (!data.ok) throw new Error(data.error || `Could not log time on ${key}`)
-    return data
+  updateLog(key, id, seconds) {
+    return this.changeTime(['update', key, String(id), minutes(seconds)], `Could not change the time on ${key}`)
+  }
+
+  log(key, seconds, date) {
+    return this.changeTime(['log', key, minutes(seconds), ...(date ? [date] : [])], `Could not log time on ${key}`)
   }
 }
 

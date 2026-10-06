@@ -1,7 +1,7 @@
 function manualForm(key, scope = '') {
   const draft = ui.drafts[`manual:${key}`] ?? ''
   const parsed = parseDuration(draft)
-  const valid = parsed >= 60 && parsed <= 86400
+  const valid = validDuration(parsed)
   const busy = ui.busy.has(`log:${key}`)
   const id = `manual${scope ? `-${scope}` : ''}-${esc(key)}`
   return `<form class="confirm" data-form="manual-log" data-key="${esc(key)}">
@@ -17,7 +17,7 @@ function manualForm(key, scope = '') {
 function editForm(entry) {
   const draft = ui.drafts[`edit:${entry.id}`] ?? duration(entry.seconds)
   const parsed = parseDuration(draft)
-  const valid = parsed >= 60 && parsed <= 86400
+  const valid = validDuration(parsed)
   const busy = ui.busy.has(`log:${entry.key}`)
   const id = `edit-${esc(entry.id)}`
   return `<form class="confirm" data-form="edit-log" data-key="${esc(entry.key)}" data-id="${esc(entry.id)}">
@@ -33,14 +33,14 @@ const TICKET_KEY = /^[A-Z][A-Z0-9]+-\d+$/
 
 function newTimeValid() {
   const seconds = parseDuration(ui.drafts['manual:new'] ?? '')
-  return TICKET_KEY.test((ui.drafts['new-key'] ?? '').trim().toUpperCase()) && seconds >= 60 && seconds <= 86400 && Boolean(ui.confirm?.date)
+  return TICKET_KEY.test((ui.drafts['new-key'] ?? '').trim().toUpperCase()) && validDuration(seconds) && Boolean(ui.confirm?.date)
 }
 
 function newTimeForm() {
   const key = ui.drafts['new-key'] ?? ''
   const draft = ui.drafts['manual:new'] ?? ''
   const parsed = parseDuration(draft)
-  const durationValid = parsed >= 60 && parsed <= 86400
+  const durationValid = validDuration(parsed)
   const keyValid = TICKET_KEY.test(key.trim().toUpperCase())
   const busy = ui.busy.has('log:new')
   const hint = !key && !draft ? 'Ticket such as TOAST-1234. Time formats: 1h, 1.5h, 15m, 1h 30m'
@@ -144,7 +144,7 @@ Object.assign(forms, {
   async 'edit-log'(form) {
     const { key, id } = form.dataset
     const seconds = parseDuration(ui.drafts[`edit:${id}`] ?? '')
-    if (!(seconds >= 60 && seconds <= 86400)) return
+    if (!validDuration(seconds)) return
     const result = await act('logUpdate', { key, id, seconds }, `log:${key}`)
     if (result?.ok) {
       delete ui.drafts[`edit:${id}`]
@@ -156,7 +156,7 @@ Object.assign(forms, {
     const key = form.dataset.key
     const seconds = parseDuration(ui.drafts[`manual:${key}`] ?? '')
     const date = ui.confirm?.type === 'manual-time' ? ui.confirm.date : ''
-    if (!date || !(seconds >= 60 && seconds <= 86400)) return
+    if (!date || !validDuration(seconds)) return
     const result = await act('log', { key, seconds, date }, `log:${key}`)
     if (result?.ok) {
       delete ui.drafts[`manual:${key}`]
@@ -181,7 +181,7 @@ document.addEventListener('input', event => {
     return
   }
   const parsed = parseDuration(event.target.value)
-  const valid = parsed >= 60 && parsed <= 86400
+  const valid = validDuration(parsed)
   form.querySelector('[type="submit"]').disabled = !valid
   const hint = form.querySelector('.hint, .invalid')
   const manual = form.dataset.form === 'manual-log'

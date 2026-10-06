@@ -103,7 +103,7 @@ function confirmRow(ticket, columns) {
   if (t.unlogged > 0 && !t.runningSince) {
     const draft = ui.drafts[ticket.key] ?? duration(roundedForLog(t.unlogged))
     const parsed = parseDuration(draft)
-    const valid = parsed >= 60 && parsed <= 86400
+    const valid = validDuration(parsed)
     const busy = ui.busy.has(`log:${ticket.key}`)
     return `<form class="confirm" data-form="log" data-key="${esc(ticket.key)}">
       <label class="question" for="log-${esc(ticket.key)}">Log on <strong class="code">${esc(ticket.key)}</strong> for today</label>

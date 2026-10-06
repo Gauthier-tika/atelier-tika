@@ -154,6 +154,8 @@ function localDay(date = new Date()) {
   return date.toLocaleDateString('sv')
 }
 
+const validDuration = seconds => seconds >= 60 && seconds <= 86400
+
 function roundedForLog(seconds) {
   return Math.max(300, Math.round(seconds / 300) * 300)
 }
