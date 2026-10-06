@@ -20,6 +20,12 @@ stub('config', {
   load: () => ({
     ...realConfig.load(),
     jiraBase: 'https://example.atlassian.net',
+    boardId: 1,
+    filters: [
+      { label: 'À MEPP', columns: ['A MEPP'], icon: 'flask' },
+      { label: 'À MEP', columns: ['A MEP'], icon: 'rocket' }
+    ],
+    unassignedColumns: ['To Do'],
     githubOrg: 'acme',
     repoDir: path.join(os.homedir(), 'Dev/shop'),
     repos: ['~/Dev/shop', '~/Dev/atelier', '~/Dev/infra'],
@@ -65,6 +71,8 @@ const tickets = [
 
 stub('jira', {
   Jira: class {
+    account = () => ({ email: 'you@example.com', token: 'demo' })
+    boards = async () => [{ id: 1, name: 'Shop board', project: 'SHOP' }]
     boardColumns = async () => columns
     tickets = async () => tickets
     unassigned = async () => [

@@ -1,4 +1,5 @@
 const fs = require('node:fs')
+const path = require('node:path')
 const { run, env } = require('./run')
 
 function qualifNumber(value) {
@@ -13,22 +14,50 @@ class Jira {
     this.flagField = null
     this.flagOption = null
     this.columns = null
+    this.boardList = null
     this.qualifOptions = null
   }
 
-  credentials() {
+  reset() {
+    this.flagField = null
+    this.flagOption = null
+    this.columns = null
+    this.boardList = null
+    this.qualifOptions = null
+    this.accountId = null
+  }
+
+  account() {
     const values = {}
-    for (const line of fs.readFileSync(this.config.jiraEnv, 'utf8').split('\n')) {
+    let text
+    try {
+      text = fs.readFileSync(this.config.jiraEnv, 'utf8')
+    } catch {
+      return null
+    }
+    for (const line of text.split('\n')) {
       const match = line.match(/^\s*(?:export\s+)?(ATLASSIAN_\w+)\s*=\s*(.*?)\s*$/)
       if (match) values[match[1]] = match[2].replace(/^['"]|['"]$/g, '')
     }
-    if (!values.ATLASSIAN_EMAIL || !values.ATLASSIAN_TOKEN)
-      throw new Error(`Jira credentials missing in ${this.config.jiraEnv}`)
-    return Buffer.from(`${values.ATLASSIAN_EMAIL}:${values.ATLASSIAN_TOKEN}`).toString('base64')
+    return values.ATLASSIAN_EMAIL && values.ATLASSIAN_TOKEN ? { email: values.ATLASSIAN_EMAIL, token: values.ATLASSIAN_TOKEN } : null
   }
 
-  async request(method, path, { params, body } = {}) {
-    const url = new URL(this.config.jiraBase + path)
+  credentials() {
+    const account = this.account()
+    if (!account) throw new Error('Jira is not connected. Add your e-mail and API token under Settings')
+    return account
+  }
+
+  saveAccount(file, { base, email, token }) {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file + '.tmp', `JIRA_BASE=${base}\nATLASSIAN_EMAIL=${email}\nATLASSIAN_TOKEN=${token}\n`, { mode: 0o600 })
+    fs.renameSync(file + '.tmp', file)
+  }
+
+  async request(method, path, { params, body, base = this.config.jiraBase, account } = {}) {
+    if (!base) throw new Error('No Jira site set. Add it under Settings')
+    const { email, token } = account || this.credentials()
+    const url = new URL(base + path)
     for (const [key, value] of Object.entries(params || {})) {
       if (Array.isArray(value)) value.forEach(item => url.searchParams.append(key, item))
       else url.searchParams.set(key, value)
@@ -36,7 +65,7 @@ class Jira {
     const response = await fetch(url, {
       method,
       headers: {
-        Authorization: `Basic ${this.credentials()}`,
+        Authorization: `Basic ${Buffer.from(`${email}:${token}`).toString('base64')}`,
         Accept: 'application/json',
         ...(body ? { 'Content-Type': 'application/json' } : {})
       },
@@ -62,9 +91,33 @@ class Jira {
     return this.flagField
   }
 
+  myself(base, account) {
+    return this.request('GET', '/rest/api/3/myself', { base, account })
+  }
+
+  async boards() {
+    if (this.boardList) return this.boardList
+    const boards = []
+    let page
+    do {
+      page = await this.request('GET', '/rest/agile/1.0/board', { params: { startAt: boards.length, maxResults: 50 } })
+      boards.push(...page.values)
+    } while (!page.isLast && page.values.length)
+    this.boardList = boards.map(board => ({ id: board.id, name: board.name, project: board.location?.projectKey || '' }))
+    return this.boardList
+  }
+
+  async boardId() {
+    if (this.config.boardId) return this.config.boardId
+    const boards = await this.boards()
+    return boards.length === 1 ? boards[0].id : null
+  }
+
   async boardColumns() {
     if (this.columns) return this.columns
-    const configuration = await this.request('GET', `/rest/agile/1.0/board/${this.config.boardId}/configuration`)
+    const board = await this.boardId()
+    if (!board) return []
+    const configuration = await this.request('GET', `/rest/agile/1.0/board/${board}/configuration`)
     this.columns = configuration.columnConfig.columns
       .filter(column => column.statuses.length)
       .map(column => ({
@@ -117,11 +170,13 @@ class Jira {
   }
 
   async unassigned() {
-    const column = (await this.boardColumns()).find(c => c.id === this.config.unassignedColumn)
-    if (!column) throw new Error(`The board has no "${this.config.unassignedColumn}" column`)
-    const page = await this.request('GET', `/rest/agile/1.0/board/${this.config.boardId}/issue`, {
+    const statusIds = (await this.boardColumns())
+      .filter(c => this.config.unassignedColumns.includes(c.id))
+      .flatMap(c => c.statusIds)
+    if (!statusIds.length) return []
+    const page = await this.request('GET', `/rest/agile/1.0/board/${await this.boardId()}/issue`, {
       params: {
-        jql: `assignee is EMPTY AND status in (${column.statusIds.join(',')}) ORDER BY Rank ASC`,
+        jql: `assignee is EMPTY AND status in (${statusIds.join(',')}) ORDER BY Rank ASC`,
         fields: 'summary,status,issuetype,priority,updated',
         maxResults: 100
       }
@@ -180,7 +235,9 @@ class Jira {
   }
 
   jiraTime(args) {
-    return run('python3', [this.config.jiraTimeBin, ...args], { env: { ...env, JIRA_BASE: this.config.jiraBase, JIRA_TIME_ENV: this.config.jiraEnv } })
+    return run('python3', [this.config.jiraTimeBin, ...args], {
+      env: { ...env, JIRA_BASE: this.config.jiraBase || '', JIRA_TIME_ENV: this.config.jiraEnv, JIRA_DAILY_HOURS: String(this.config.dailyHours) }
+    })
   }
 
   async week() {

@@ -11,7 +11,9 @@
                                  supprime le worklog <ID> du ticket
 
 Identifiants : ATLASSIAN_EMAIL et ATLASSIAN_TOKEN (jeton API personnel), lus
-dans ~/.config/jira-time/env (ou le fichier nomme par JIRA_TIME_ENV).
+dans ~/.config/jira-time/env (ou le fichier nomme par JIRA_TIME_ENV). Le site
+Jira vient de JIRA_BASE, dans l'environnement ou dans ce fichier ; l'objectif
+quotidien, de JIRA_DAILY_HOURS (7 par defaut).
 """
 
 import base64
@@ -25,9 +27,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-BASE = os.environ.get("JIRA_BASE", "https://tikamoon.atlassian.net").rstrip("/")
-DAILY_TARGET = 7 * 3600
-ENV_FILES = [os.path.expanduser(os.environ.get("JIRA_TIME_ENV", "~/.config/jira-time/env"))]
+ENV_FILE = os.path.expanduser(os.environ.get("JIRA_TIME_ENV", "~/.config/jira-time/env"))
 CACHE_DIR = os.path.expanduser("~/.cache/jira-time")
 # Signal waybar du module custom/jira (cf. waybar/module.jsonc)
 WAYBAR_SIGNAL = 9
@@ -37,21 +37,33 @@ class JiraError(Exception):
     pass
 
 
-def credentials():
+def settings():
     env = {}
-    for path in ENV_FILES:
-        if not os.path.isfile(path):
-            continue
-        for line in open(path, encoding="utf-8"):
-            m = re.match(r"\s*(?:export\s+)?(ATLASSIAN_\w+)\s*=\s*(.*?)\s*$", line)
+    if os.path.isfile(ENV_FILE):
+        for line in open(ENV_FILE, encoding="utf-8"):
+            m = re.match(r"\s*(?:export\s+)?((?:ATLASSIAN|JIRA)_\w+)\s*=\s*(.*?)\s*$", line)
             if m:
                 env.setdefault(m[1], m[2].strip("'\""))
-        if env.get("ATLASSIAN_EMAIL") and env.get("ATLASSIAN_TOKEN"):
-            return env["ATLASSIAN_EMAIL"], env["ATLASSIAN_TOKEN"]
-    raise JiraError("Identifiants Jira introuvables (~/.config/jira-time/env)")
+    for name in ("JIRA_BASE", "JIRA_DAILY_HOURS"):
+        if os.environ.get(name):
+            env[name] = os.environ[name]
+    return env
+
+
+SETTINGS = settings()
+BASE = SETTINGS.get("JIRA_BASE", "").rstrip("/")
+DAILY_TARGET = round(float(SETTINGS.get("JIRA_DAILY_HOURS") or 7) * 3600)
+
+
+def credentials():
+    if SETTINGS.get("ATLASSIAN_EMAIL") and SETTINGS.get("ATLASSIAN_TOKEN"):
+        return SETTINGS["ATLASSIAN_EMAIL"], SETTINGS["ATLASSIAN_TOKEN"]
+    raise JiraError(f"Identifiants Jira introuvables ({ENV_FILE})")
 
 
 def request(method, path, params=None, body=None):
+    if not BASE:
+        raise JiraError(f"Site Jira inconnu : définir JIRA_BASE dans l'environnement ou dans {ENV_FILE}")
     email, token = credentials()
     url = BASE + path + ("?" + urllib.parse.urlencode(params) if params else "")
     data = json.dumps(body).encode() if body is not None else None

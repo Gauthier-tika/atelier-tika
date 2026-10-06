@@ -70,7 +70,9 @@ function composeQualifs(data, config) {
 function compose(data, timer, config, terminals = []) {
   const reviewRepos = config.reviewRepos
   const columns = data.columns || []
-  const stageOf = Object.fromEntries(Object.entries(config.stageColumns || {}).map(([stage, name]) => [name, stage]))
+  const filters = (config.filters || []).map((filter, index) => ({ id: `filter-${index}`, label: filter.label, icon: filter.icon || null, columns: filter.columns }))
+  const stageOf = {}
+  for (const filter of filters) for (const column of filter.columns) stageOf[column] ??= filter.id
   const inProgress = Math.max(0, columns.findIndex(c => /progress/i.test(c.name)))
   const prs = data.github?.mine || []
   const past = data.past || []
@@ -169,6 +171,7 @@ function compose(data, timer, config, terminals = []) {
   const runningKey = timer.running?.key
   return {
     columns: columns.map(c => c.name),
+    filters: filters.map(({ id, label, icon }) => ({ id, label, icon })),
     inProgress: columns[inProgress]?.name || null,
     tickets,
     unassigned,

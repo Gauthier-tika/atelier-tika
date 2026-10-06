@@ -27,6 +27,7 @@ const G = {
   flask: svg('<path d="M9 3h6"/><path d="M10 3v6L4.5 19a1.5 1.5 0 0 0 1.3 2h12.4a1.5 1.5 0 0 0 1.3-2L14 9V3"/><path d="M7 15h10"/>'),
   rocket: svg('<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>'),
   userPlus: svg('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/>'),
+  filter: svg('<path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z"/>'),
   server: svg('<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01"/><path d="M6 18h.01"/>'),
   folder: svg('<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>'),
   settings: svg('<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>'),
@@ -55,7 +56,8 @@ const ui = {
   confirm: null,
   drafts: {},
   logs: new Set(),
-  busy: new Set()
+  busy: new Set(),
+  jiraDraft: {}
 }
 
 const $ = id => document.getElementById(id)
@@ -448,7 +450,70 @@ function renderSettings(state) {
       <span class="hint">${state.reposPinned ? 'Not used: "repos" in config.json lists the repositories'
         : state.repos.length ? `${state.repos.length} ${state.repos.length === 1 ? 'repository' : 'repositories'}, each a folder right inside it with a .git or .sl directory`
         : 'No repository: Atelier looks for folders right inside it with a .git or .sl directory'}</span>
-    </div>`
+    </div>
+    ${jiraSettings(state)}`
+}
+
+function columnPicks(columns, checked, attrs, taken = new Map()) {
+  return `<div class="column-picks">${columns.map(column => {
+    const owner = taken.get(column.id)
+    return `<label class="column-pick" ${owner ? `title="Already in ${esc(owner)}"` : ''}>
+      <input type="checkbox" ${attrs} data-column="${esc(column.id)}" ${checked.includes(column.id) ? 'checked' : ''} ${owner ? 'disabled' : ''}>
+      <span>${esc(column.name)}</span>${owner ? `<span class="hint">in ${esc(owner)}</span>` : ''}</label>`
+  }).join('')}</div>`
+}
+
+function jiraBoard(jira, loading) {
+  if (!jira.connected) return '<p class="setting-hint">Connect Jira to pick a board and the columns Atelier uses.</p>'
+  if (!jira.boards) return `<p class="setting-hint">${loading ? 'Loading your boards…' : 'Jira did not list your boards. Refresh to try again.'}</p>`
+  if (!jira.boards.length) return '<p class="setting-hint">Your Jira account sees no board.</p>'
+  if (jira.boards.length === 1) {
+    const board = jira.boards[0]
+    return `<div class="setting-row"><span class="t">Board</span><span>${esc(board.name)}${board.project ? ` <span class="meta code">(${esc(board.project)})</span>` : ''}</span><span class="hint">The only board your account sees</span></div>`
+  }
+  return `<label class="setting-row" for="jira-board"><span class="t">Board</span>
+    <select id="jira-board" data-pick="jira-board">${jira.boardId ? '' : '<option value="" selected>Pick a board</option>'}${jira.boards.map(board => `
+      <option value="${board.id}" ${board.id === jira.boardId ? 'selected' : ''}>${esc(board.name)}${board.project ? ` (${esc(board.project)})` : ''}</option>`).join('')}
+    </select></label>`
+}
+
+function jiraColumns(jira, loading) {
+  if (!jira.connected || !jira.boardId) return ''
+  if (!jira.columns.length) return `<p class="setting-hint">${loading ? 'Loading the board columns…' : 'The board shows no column.'}</p>`
+  const owners = jira.filters.flatMap((filter, index) => filter.columns.map(column => [column, index]))
+  return `<h3>Unassigned</h3>
+    <p class="setting-hint">Unassigned tickets in these columns show under Unassigned. Check none to hide the tab.</p>
+    ${columnPicks(jira.columns, jira.unassignedColumns, 'data-pick="unassigned-column"')}
+    <h3>Filters</h3>
+    <p class="setting-hint">Each filter is a tab under My tickets. Your tickets in its columns show there instead of in My tickets.</p>
+    ${jira.filters.map((filter, index) => {
+      const taken = new Map(owners.filter(([, owner]) => owner !== index).map(([column, owner]) => [column, jira.filters[owner].label]))
+      return `<div class="filter-edit">
+        <div class="filter-head">
+          <input class="filter-name" data-filter-label="${index}" value="${esc(filter.label)}" aria-label="Filter name" spellcheck="false">
+          <button class="btn quiet" data-act="filter-remove" data-index="${index}" title="Remove the ${esc(filter.label)} filter"><span class="glyph">${G.cross}</span><span class="t">Remove</span></button>
+        </div>
+        ${columnPicks(jira.columns, filter.columns, `data-pick="filter-column" data-index="${index}"`, taken)}
+      </div>`
+    }).join('')}
+    <div class="setting-row"><button class="btn" data-act="filter-add"><span class="glyph">${G.plus}</span><span class="t">Add a filter</span></button></div>`
+}
+
+function jiraSettings(state) {
+  const jira = state.jira
+  const draft = ui.jiraDraft
+  const busy = ui.busy.has('jira-connect')
+  return `<h3>Jira</h3>
+    <form class="jira-form" data-form="jira">
+      <label><span class="t">Site</span><input data-jira="base" value="${esc(draft.base ?? jira.base)}" placeholder="https://your-team.atlassian.net" autocomplete="off" spellcheck="false"></label>
+      <label><span class="t">E-mail</span><input data-jira="email" type="email" value="${esc(draft.email ?? jira.email)}" autocomplete="off" spellcheck="false"></label>
+      <label><span class="t">API token</span><input data-jira="token" type="password" value="${esc(draft.token ?? '')}" placeholder="${jira.email ? 'Saved, leave empty to keep it' : 'Create one on id.atlassian.com'}" autocomplete="off"></label>
+      <button class="btn primary" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Connecting…' : jira.connected ? 'Save' : 'Connect'}</button>
+      <span class="hint">${jira.legacyFile ? `Atelier reads the e-mail and token from <span class="code">${esc(jira.legacyFile)}</span> for now. ${jira.connected ? 'Save' : 'Connect'} to keep them in <span class="code">${esc(jira.file)}</span> instead, readable only by you.`
+        : `${jira.connected ? 'Connected. ' : ''}The e-mail and token stay in <span class="code">${esc(jira.file)}</span>, readable only by you. Time tracking reads them from there too.`}</span>
+    </form>
+    ${jiraBoard(jira, state.loading.jira)}
+    ${jiraColumns(jira, state.loading.jira)}`
 }
 
 
@@ -490,11 +555,10 @@ function renderLaunch(state) {
     }).join('')}</div>` : ''}`
 }
 
-const NAV = [
+const navItems = state => [
   { tab: 'mine', label: 'My tickets', glyph: 'list' },
-  { tab: 'mepp', label: 'À MEPP', glyph: 'flask', sub: true },
-  { tab: 'mep', label: 'À MEP', glyph: 'rocket', sub: true },
-  { tab: 'unassigned', label: 'Unassigned', glyph: 'userPlus', sub: true },
+  ...(state?.filters || []).map(filter => ({ tab: filter.id, label: filter.label, glyph: G[filter.icon] ? filter.icon : 'filter', sub: true })),
+  ...(state && !state.jira.unassignedColumns.length ? [] : [{ tab: 'unassigned', label: 'Unassigned', glyph: 'userPlus', sub: true }]),
   { tab: 'qualifs', label: 'Qualifs', glyph: 'server' },
   { tab: 'reviews', label: 'To review', glyph: 'eye' },
   { tab: 'settings', label: 'Settings', glyph: 'settings' }
@@ -511,7 +575,7 @@ function navCount(state, tab) {
 
 function renderNav() {
   const listing = document.body.dataset.view === 'list'
-  $('tabs').innerHTML = NAV.map(item => {
+  $('tabs').innerHTML = navItems(ui.state).map(item => {
     const current = listing && ui.tab === item.tab
     const count = navCount(ui.state, item.tab)
     return `<button data-tab="${item.tab}" class="${item.sub ? 'sub' : ''}" aria-current="${current ? 'page' : 'false'}" title="${esc(item.label)}">
@@ -522,7 +586,9 @@ function renderNav() {
 function renderMine(state) {
   const mine = ticketsIn(state, 'mine')
   const parts = [`<h2 id="mine-title">My tickets <span class="count">${mine.length || ''}</span></h2>`]
-  if (state.errors.jira) parts.push(`<p class="notice">Jira did not answer: ${esc(state.errors.jira)}. Check the credentials in ~/.config/jira-time/env, then refresh.</p>`)
+  if (!state.jira.connected) parts.push('<p class="notice">Connect Jira under <button class="link" data-act="go-settings">Settings</button> to see your tickets.</p>')
+  else if (state.errors.jira) parts.push(`<p class="notice">Jira did not answer: ${esc(state.errors.jira)}. Check the Jira part of <button class="link" data-act="go-settings">Settings</button>, then refresh.</p>`)
+  else if (state.jira.boards?.length > 1 && !state.jira.boardId) parts.push('<p class="notice">Pick your board under <button class="link" data-act="go-settings">Settings</button> to sort your tickets by column.</p>')
   if (state.errors.github) parts.push(`<p class="notice">GitHub did not answer: ${esc(state.errors.github)}. Run <span class="code">gh auth status</span> in a terminal, then refresh.</p>`)
   if (!mine.length) {
     parts.push(`<p class="empty">${state.loading.jira ? 'Loading your Jira tickets…' : state.tickets.length ? 'Your other tickets wait for a release.' : 'Nothing is assigned to you outside Done.'}</p>`)
@@ -574,6 +640,21 @@ function renderMine(state) {
       </div>`).join(''))
   }
   $('mine').innerHTML = parts.join('')
+}
+
+function syncFilterPanes(state) {
+  const ids = state.filters.map(f => f.id)
+  for (const pane of document.querySelectorAll('.pane.filter')) if (!ids.includes(pane.id)) pane.remove()
+  for (const id of ids) {
+    if ($(id)) continue
+    const pane = document.createElement('section')
+    pane.className = 'pane filter'
+    pane.id = id
+    pane.setAttribute('aria-labelledby', `${id}-title`)
+    $('unassigned').before(pane)
+  }
+  if (navItems(state).some(item => item.tab === ui.tab)) markFilterPane()
+  else setTab('mine')
 }
 
 function renderStage(state, stage, title) {
@@ -872,19 +953,19 @@ function render() {
   const active = document.activeElement
   const focusKey = active?.dataset?.draft ? `[data-draft="${active.dataset.draft}"]` : null
   const selection = focusKey ? [active.selectionStart, active.selectionEnd] : null
-  const panes = ['mine', 'mepp', 'mep', 'unassigned', 'qualifs', 'reviews']
+  syncFilterPanes(state)
+  const panes = ['mine', ...state.filters.map(f => f.id), 'unassigned', 'qualifs', 'reviews']
   const scroll = Object.fromEntries(panes.map(id => [id, $(id).scrollTop]))
 
   renderToday(state)
   renderClock(state)
   renderSync(state)
   renderMine(state)
-  renderStage(state, 'mepp', 'À MEPP')
-  renderStage(state, 'mep', 'À MEP')
+  for (const filter of state.filters) renderStage(state, filter.id, filter.label)
   renderUnassigned(state)
   if (!(active?.tagName === 'SELECT' && active.closest('#qualifs'))) renderQualifs(state)
   renderReviews(state)
-  renderSettings(state)
+  if (!(active?.matches('input:not([type="checkbox"]), select') && $('settings').contains(active))) renderSettings(state)
   renderLaunch(state)
   renderNav()
 
@@ -1086,6 +1167,16 @@ const handlers = {
     renderSettings(ui.state)
   },
   'choose-dev-dir': () => act('chooseDevDir', {}, 'choose-dev-dir'),
+  'go-settings': () => setTab('settings'),
+  async 'filter-add'() {
+    const filters = ui.state.jira.filters
+    const result = await act('jiraFilters', { filters: [...filters, { label: `Filter ${filters.length + 1}`, columns: [] }] })
+    if (!result?.ok) return
+    const input = document.querySelector(`[data-filter-label="${filters.length}"]`)
+    input?.focus()
+    input?.select()
+  },
+  'filter-remove': el => act('jiraFilters', { filters: ui.state.jira.filters.filter((_, index) => index !== Number(el.dataset.index)) }),
   'set-editor': el => {
     if (el.getAttribute('aria-checked') !== 'true') act('setEditor', { command: el.dataset.command })
   },
@@ -1116,6 +1207,28 @@ document.addEventListener('change', event => {
     return
   }
   const pick = event.target.dataset?.pick
+  const jira = ui.state?.jira
+  if (event.target.dataset?.filterLabel) {
+    const index = Number(event.target.dataset.filterLabel)
+    act('jiraFilters', { filters: jira.filters.map((filter, i) => i === index ? { ...filter, label: event.target.value } : filter) })
+      .then(result => { if (!result?.ok) renderSettings(ui.state) })
+    return
+  }
+  if (pick === 'jira-board') {
+    event.target.blur()
+    if (event.target.value) act('jiraBoard', { id: Number(event.target.value) })
+    return
+  }
+  if (pick === 'unassigned-column' || pick === 'filter-column') {
+    const column = event.target.dataset.column
+    const toggle = list => event.target.checked ? [...list.filter(c => c !== column), column] : list.filter(c => c !== column)
+    if (pick === 'unassigned-column') act('jiraUnassigned', { columns: toggle(jira.unassignedColumns) })
+    else {
+      const index = Number(event.target.dataset.index)
+      act('jiraFilters', { filters: jira.filters.map((filter, i) => i === index ? { ...filter, columns: toggle(filter.columns) } : filter) })
+    }
+    return
+  }
   if (pick === 'qualif-add' || pick === 'qualif-ticket') {
     const value = event.target.value
     event.target.blur()
@@ -1139,6 +1252,11 @@ document.addEventListener('toggle', event => {
 }, true)
 
 document.addEventListener('input', event => {
+  const field = event.target.dataset?.jira
+  if (field) {
+    ui.jiraDraft[field] = event.target.value
+    return
+  }
   const key = event.target.dataset?.draft
   if (!key) return
   ui.drafts[key] = event.target.value
@@ -1152,6 +1270,18 @@ document.addEventListener('input', event => {
 })
 
 document.addEventListener('submit', async event => {
+  if (event.target.closest('[data-form="jira"]')) {
+    event.preventDefault()
+    document.activeElement?.blur()
+    const jira = ui.state.jira
+    const draft = ui.jiraDraft
+    const result = await act('jiraConnect', { base: draft.base ?? jira.base, email: draft.email ?? jira.email, token: draft.token ?? '' }, 'jira-connect')
+    if (result?.ok) {
+      ui.jiraDraft = {}
+      renderSettings(ui.state)
+    }
+    return
+  }
   const form = event.target.closest('[data-form="log"]')
   if (!form) return
   event.preventDefault()
@@ -1177,16 +1307,21 @@ document.addEventListener('keydown', event => {
     render()
   } else if (event.key === 'Escape' && ui.confirm) handlers.cancel()
   else if (event.key === 'r' && !event.ctrlKey && !event.metaKey) act('refresh')
-  else if (TABS[Number(event.key) - 1]) setTab(TABS[Number(event.key) - 1])
+  else {
+    const item = navItems(ui.state)[Number(event.key) - 1]
+    if (item) setTab(item.tab)
+  }
 })
 
-const TABS = ['mine', 'mepp', 'mep', 'unassigned', 'qualifs', 'reviews', 'settings']
-const MINE_FILTERS = ['mepp', 'mep', 'unassigned']
+function markFilterPane() {
+  for (const pane of document.querySelectorAll('.pane.filter')) pane.classList.toggle('current', pane.id === ui.tab)
+}
 
 function setTab(tab) {
   ui.tab = tab
   $('panes').dataset.tab = tab
   $('tabs').dataset.tab = tab
+  markFilterPane()
   renderNav()
 }
 
@@ -1197,7 +1332,8 @@ $('tabs').addEventListener('click', event => {
   const listing = document.body.dataset.view === 'list'
   if (document.body.dataset.view === 'session') showList()
   if (document.body.dataset.view === 'web') closeWeb()
-  setTab(listing && MINE_FILTERS.includes(tab) && ui.tab === tab ? 'mine' : tab)
+  const sub = navItems(ui.state).find(item => item.tab === tab)?.sub
+  setTab(listing && sub && ui.tab === tab ? 'mine' : tab)
 })
 
 window.atelier.onState(state => {

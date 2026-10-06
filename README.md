@@ -8,7 +8,7 @@ It is built for one setup (Linux with Hyprland, Ghostty and Sapling) and is not 
 
 ## What it does
 
-- **Tickets**: my board, the MEPP and MEP columns and unassigned tickets from Jira. Move a ticket between columns, flag it, take an unassigned one, log time against it with a timer.
+- **Tickets**: my Jira tickets, sorted by the columns of a board, with tabs for the columns you pick (MEPP and MEP for me) and the unassigned tickets. Move a ticket between columns, flag it, take an unassigned one, log time against it with a timer.
 - **Claude sessions**: start or resume a Claude Code session on a ticket in an embedded terminal. Sessions already running in another terminal are shown too, and on Hyprland or Sway Atelier switches to their window.
 - **Splits**: Ghostty-style panes inside a session. **Open nvim** puts nvim, or the [editor](#editor) you set, on the left of Claude, and extra shells split beside it. A pane closes when its program exits.
 - **PRs and reviews**: GitHub PRs and their checks, rebase a ticket's PR, start a Claude review of a PR.
@@ -25,12 +25,7 @@ It is built for one setup (Linux with Hyprland, Ghostty and Sapling) and is not 
 - Optional: `sl` (Sapling), for `sl web`; without it Atelier uses git
 - Optional, to switch windows: `hyprctl` on Hyprland or `swaymsg` on Sway
 - Optional, a [terminal](#terminal): Ghostty (through `uwsm-app` on Hyprland) by default, Alacritty on Sway
-- Jira credentials in `~/.config/jira-time/env`:
-
-  ```sh
-  ATLASSIAN_EMAIL=you@example.com
-  ATLASSIAN_TOKEN=your-api-token
-  ```
+- A Jira Cloud account and an [API token](https://id.atlassian.com/manage-profile/security/api-tokens), entered under **Settings** (see [Jira](#jira))
 
 ## Install and run
 
@@ -59,7 +54,7 @@ cp atelier.desktop ~/.local/share/applications/
 |---|---|
 | `bin/atelier` | Launcher |
 | `bin/claude-sessions` | Tracks running Claude sessions through Claude Code hooks, lists them and focuses their window |
-| `bin/jira-time` | Reads the week's Jira worklogs and logs time. Atelier passes it `jiraBase` and `jiraEnv` |
+| `bin/jira-time` | Reads the week's Jira worklogs and logs time. Atelier passes it `jiraBase`, `jiraEnv` and `dailyHours` |
 | `bin/atelier-run` | Lets a workflow run report its stage, ticket, questions and outcome to Atelier |
 | `bin/qualif-sync` | Rebuilds `qualif-<github-login>-<N>` from `origin/staging` plus your PRs, pushes it and starts the deployment |
 
@@ -102,6 +97,34 @@ Atelier lists as repositories the folders right inside `devDir` that hold a `.gi
 | `ATELIER_SHOT_TAB`, `ATELIER_SHOT_SESSION` | Tab or session to show in that screenshot |
 
 `npm run shot:demo` regenerates `demo/screenshot.png` from the made-up tickets, PRs and sessions in `demo/shot.js`, without calling Jira or GitHub.
+
+### Jira
+
+Under **Settings**, enter your Jira site, the e-mail of your Atlassian account and an API token, then **Connect**. Atelier checks them against Jira, saves the site as `jiraBase` in `config.json` and the e-mail and token in `~/.config/atelier/jira.env`, readable only by you. Time tracking (`bin/jira-time`) reads the same file. An existing `~/.config/jira-time/env` is used until you connect from Settings; `jiraEnv` points Atelier at any other file.
+
+Your tickets are the ones assigned to you outside Done, on every board. A board gives them their columns: if your account sees a single board Atelier uses it, otherwise pick one under **Settings**, saved as `boardId`.
+
+Then choose, among that board's columns:
+
+- **Unassigned**: the columns whose unassigned tickets show under Unassigned, `["To Do"]` by default. With none, the tab is hidden.
+- **Filters**: each filter is a tab under My tickets, with a name and one or more columns. Your tickets in those columns show there instead of in My tickets. A column belongs to one filter at most.
+
+Both are saved in `config.json`, by the column names Jira gives them:
+
+```json
+{
+  "boardId": 17,
+  "unassignedColumns": ["Backlog", "To Do"],
+  "filters": [
+    { "label": "À MEPP", "columns": ["A MEPP"], "icon": "flask" },
+    { "label": "À MEP", "columns": ["A MEP"], "icon": "rocket" }
+  ]
+}
+```
+
+`icon` is optional and only set in that file; without it a filter gets a funnel. `dailyHours`, 7 by default, sets the daily time target.
+
+### Theme
 
 Pick a theme under **Settings**, Atelier, [Nord](https://www.nordtheme.com) or Light. It applies to the app and its terminals at once, and is saved as `"theme"` in `~/.config/atelier/config.json`.
 

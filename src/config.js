@@ -8,11 +8,15 @@ const bundled = name => path.join(__dirname, '..', 'bin', name)
 const expand = p => p.replace(/^~(?=$|\/)/, home)
 const tilde = p => p === home || p.startsWith(home + '/') ? '~' + p.slice(home.length) : p
 
+const jiraEnvFile = path.join(home, '.config/atelier/jira.env')
+const legacyJiraEnvFile = path.join(home, '.config/jira-time/env')
+
 const defaults = {
-  jiraBase: 'https://tikamoon.atlassian.net',
-  jiraEnv: '~/.config/jira-time/env',
+  jiraBase: null,
+  jiraEnv: jiraEnvFile,
   jiraTimeBin: bundled('jira-time'),
-  boardId: 17,
+  dailyHours: 7,
+  boardId: null,
   columnLabels: {
     'In Progress / PR': 'In progress',
     'RECETTE PO': 'Recette PO',
@@ -20,11 +24,8 @@ const defaults = {
     'A MEPP': 'À MEPP',
     'A MEP': 'À MEP'
   },
-  stageColumns: {
-    mepp: 'A MEPP',
-    mep: 'A MEP'
-  },
-  unassignedColumn: 'To Do',
+  filters: [],
+  unassignedColumns: ['To Do'],
   hiddenColumns: [],
   columnColors: {},
   qualifField: 'customfield_10253',
@@ -65,9 +66,23 @@ function readUser() {
   }
 }
 
+const stageIcons = { mepp: 'flask', mep: 'rocket' }
+
+const cleanFilters = filters => (Array.isArray(filters) ? filters : [])
+  .filter(f => f && typeof f.label === 'string' && f.label.trim())
+  .map(f => ({ label: f.label.trim(), columns: (Array.isArray(f.columns) ? f.columns : []).filter(c => typeof c === 'string'), ...(f.icon ? { icon: String(f.icon) } : {}) }))
+
 function load() {
   const user = readUser()
   const config = { ...defaults, ...user, columnLabels: { ...defaults.columnLabels, ...user.columnLabels } }
+  if (!user.filters && user.stageColumns)
+    config.filters = Object.entries(user.stageColumns).map(([stage, column]) => ({ label: config.columnLabels[column] || column, columns: [column], ...(stageIcons[stage] ? { icon: stageIcons[stage] } : {}) }))
+  if (!user.unassignedColumns && user.unassignedColumn) config.unassignedColumns = [user.unassignedColumn]
+  config.filters = cleanFilters(config.filters)
+  config.unassignedColumns = (Array.isArray(config.unassignedColumns) ? config.unassignedColumns : []).filter(c => typeof c === 'string')
+  config.jiraBase = config.jiraBase ? String(config.jiraBase).replace(/\/+$/, '') : null
+  config.jiraEnvLegacy = !user.jiraEnv && !fs.existsSync(jiraEnvFile) && fs.existsSync(legacyJiraEnvFile)
+  if (config.jiraEnvLegacy) config.jiraEnv = legacyJiraEnvFile
   for (const key of ['jiraEnv', 'jiraTimeBin', 'devDir', 'repoDir', 'claudeSessionsBin', 'qualifSyncBin'])
     config[key] = expand(config[key])
   config.editor = { ...defaults.editor, ...user.editor }
@@ -96,4 +111,4 @@ function save(changes) {
 const editorArgs = (editor, directory) => editor.args.map(arg => arg.replaceAll('{dir}', directory))
 const terminalArgs = (terminal, values) => terminal.args.map(arg => arg.replace(/\{(dir|shell|command)\}/g, (_, name) => values[name]))
 
-module.exports = { load, save, home, expand, tilde, editors, editorArgs, terminalArgs }
+module.exports = { load, save, home, expand, tilde, editors, editorArgs, terminalArgs, cleanFilters, jiraEnvFile }

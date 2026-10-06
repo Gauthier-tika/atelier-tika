@@ -24,6 +24,7 @@ const timer = new Timer()
 const shotPath = process.env.ATELIER_SHOT
 
 const data = {
+  boards: null,
   columns: null,
   tickets: null,
   unassigned: null,
@@ -75,7 +76,23 @@ function repoNamed(name) {
   return repo
 }
 
-const current = () => ({ ...compose({ ...data, qualifs: qualifs.list(), runs: runs.list() }, timer.state, config, terminals.list()), workflows: config.workflows.map(({ id, label, description }) => ({ id, label, description: description || '' })), repos: repos().map(r => r.name), sapling: data.sapling, editor: { name: config.editor.name, mode: config.editor.mode }, editors: editorChoices(), terminal: { name: config.terminal.name, switching: Boolean(wm.desktop) }, devDir: configModule.tilde(config.devDir), reposPinned: Boolean(config.repos?.length) })
+function jiraSettings() {
+  const account = jira.account()
+  return {
+    base: config.jiraBase || '',
+    email: account?.email || '',
+    connected: Boolean(config.jiraBase && account),
+    file: configModule.tilde(config.jiraEnvLegacy ? configModule.jiraEnvFile : config.jiraEnv),
+    legacyFile: config.jiraEnvLegacy ? configModule.tilde(config.jiraEnv) : null,
+    boards: data.boards,
+    boardId: config.boardId || (data.boards?.length === 1 ? data.boards[0].id : null),
+    columns: (data.columns || []).map(({ id, name }) => ({ id, name })),
+    unassignedColumns: config.unassignedColumns,
+    filters: config.filters
+  }
+}
+
+const current = () => ({ ...compose({ ...data, qualifs: qualifs.list(), runs: runs.list() }, timer.state, config, terminals.list()), workflows: config.workflows.map(({ id, label, description }) => ({ id, label, description: description || '' })), repos: repos().map(r => r.name), sapling: data.sapling, editor: { name: config.editor.name, mode: config.editor.mode }, editors: editorChoices(), terminal: { name: config.terminal.name, switching: Boolean(wm.desktop) }, devDir: configModule.tilde(config.devDir), reposPinned: Boolean(config.repos?.length), jira: jiraSettings() })
 
 const qualifBranches = () => data.github ? qualifs.list().map(q => `qualif-${data.github.viewer}-${q.number}`) : []
 
@@ -100,7 +117,8 @@ async function load(name, task, apply) {
 
 let jiraLoading = null
 const loaders = {
-  jira: (reconcile = []) => jiraLoading = load('jira', async () => [await jira.boardColumns(), await jira.tickets(reconcile), await jira.unassigned()], ([columns, tickets, unassigned]) => {
+  jira: (reconcile = []) => jiraLoading = load('jira', async () => [await jira.boards(), await jira.boardColumns(), await jira.tickets(reconcile), await jira.unassigned()], ([boards, columns, tickets, unassigned]) => {
+    data.boards = boards
     data.columns = columns
     data.tickets = tickets
     data.unassigned = unassigned.filter(item => !tickets.some(t => t.key === item.key))
@@ -194,6 +212,61 @@ const actions = {
     configModule.save({ editor: editor === configModule.editors[0] ? null : editor })
     config.editor = { ...editor }
     terminals.editor = config.editor
+    push()
+  },
+
+  async jiraConnect({ base, email, token }) {
+    let site = String(base || '').trim().replace(/\/+$/, '')
+    if (site && !/^https?:\/\//.test(site)) site = `https://${site}`
+    let origin
+    try {
+      origin = new URL(site).origin
+    } catch {
+      throw new Error('Enter the Jira site, such as https://your-team.atlassian.net')
+    }
+    email = String(email || '').trim()
+    const saved = jira.account()
+    token = String(token || '').trim() || (saved?.email === email ? saved.token : '')
+    if (!email) throw new Error('Enter the e-mail of your Atlassian account')
+    if (!token) throw new Error('Enter an API token for that account')
+    const me = await jira.myself(origin, { email, token })
+    const file = config.jiraEnvLegacy ? configModule.jiraEnvFile : config.jiraEnv
+    jira.saveAccount(file, { base: origin, email, token })
+    config.jiraEnv = file
+    config.jiraEnvLegacy = false
+    const siteChanged = config.jiraBase !== origin
+    config.jiraBase = origin
+    if (siteChanged) config.boardId = null
+    configModule.save({ jiraBase: origin, ...(siteChanged ? { boardId: null } : {}) })
+    jira.reset()
+    Object.assign(data, siteChanged ? { boards: null, columns: null, tickets: null, unassigned: null } : {})
+    loaders.jira()
+    loaders.time()
+    return `Connected to ${new URL(origin).host} as ${me.displayName || email}`
+  },
+
+  jiraBoard({ id }) {
+    const board = data.boards?.find(b => b.id === Number(id))
+    if (!board) throw new Error('That board is no longer listed')
+    config.boardId = board.id
+    configModule.save({ boardId: board.id })
+    jira.columns = null
+    data.columns = null
+    data.unassigned = null
+    loaders.jira()
+    return `Atelier now sorts your tickets by the columns of ${board.name}`
+  },
+
+  jiraUnassigned({ columns }) {
+    config.unassignedColumns = (Array.isArray(columns) ? columns : []).filter(c => typeof c === 'string')
+    configModule.save({ unassignedColumns: config.unassignedColumns })
+    loaders.jira()
+  },
+
+  jiraFilters({ filters }) {
+    if (!Array.isArray(filters) || filters.some(f => !String(f?.label || '').trim())) throw new Error('Give every filter a name')
+    config.filters = configModule.cleanFilters(filters)
+    configModule.save({ filters: config.filters })
     push()
   },
 
