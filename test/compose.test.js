@@ -51,9 +51,21 @@ test('a ticket gets its live session, or else its last past one', () => {
 })
 
 test('a session embedded for a rebase, a review or a run is not taken as the ticket session', () => {
-  const terminals = [{ id: 'rebase:SHOP-482', pid: 1, exited: false }]
+  const terminals = [{ id: 'rebase:SHOP-482', role: 'rebase', key: 'SHOP-482', pid: 1, exited: false }]
   const ticket = run({ terminals }).tickets.find(t => t.key === 'SHOP-482')
   assert.equal(ticket.session, undefined)
+  assert.equal(ticket.rebase.id, 'rebase:SHOP-482')
+})
+
+test('a ticket finds its own terminal and the review its own, by role', () => {
+  const terminals = [
+    { id: 'ticket:SHOP-482', role: 'ticket', key: 'SHOP-482', pid: 1, exited: false },
+    { id: 'review:PR_1206', role: 'review', prId: 'PR_1206', pid: 9, exited: false }
+  ]
+  const state = run({ terminals })
+  assert.equal(state.tickets.find(t => t.key === 'SHOP-482').terminal.id, 'ticket:SHOP-482')
+  assert.equal(state.tickets.find(t => t.key === 'SHOP-482').session.embedded, 'ticket:SHOP-482')
+  assert.equal(state.reviews.find(pr => pr.id === 'PR_1206').terminal.id, 'review:PR_1206')
 })
 
 test('open pull requests without a ticket and sessions without one are listed apart', () => {

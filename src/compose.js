@@ -101,8 +101,9 @@ function compose(data, timer, config, terminals = []) {
   const live = (data.live || []).map(session => {
     const embedded = terminals.find(t => t.pid === session.pid && !t.exited)
     const first = past.find(p => p.id === session.id)?.prompt || ''
-    return { ...session, first, ...(embedded ? { embedded: embedded.id } : {}) }
+    return { ...session, first, ...(embedded ? { embedded: embedded.id, embeddedRole: embedded.role } : {}) }
   })
+  const terminalFor = (role, match) => terminals.find(t => t.role === role && Object.entries(match).every(([field, value]) => t[field] === value)) || null
   const runs = (data.runs || []).map(run => {
     const terminal = terminals.find(t => t.id === run.terminal)
     return { ...run, open: Boolean(terminal), running: Boolean(terminal && !terminal.exited) }
@@ -120,15 +121,15 @@ function compose(data, timer, config, terminals = []) {
       .filter(pr => keysOf(pr).includes(ticket.key))
       .sort((a, b) => (a.state === 'OPEN' ? 0 : 1) - (b.state === 'OPEN' ? 0 : 1) || b.updatedAt.localeCompare(a.updatedAt))
     ticketPrs.forEach(pr => claimedPrs.add(pr.id))
-    const candidates = live.filter(s => !/^(rebase|review|run):/.test(s.embedded || ''))
+    const candidates = live.filter(s => !['rebase', 'review', 'run'].includes(s.embeddedRole))
     const session = candidates.find(s => s.keys.includes(ticket.key)) ||
       candidates.find(s => past.find(p => p.id === s.id)?.keys.includes(ticket.key))
     if (session) claimed.add(session.id)
     const previous = session ? null : past.find(p => p.keys.includes(ticket.key))
-    const terminal = terminals.find(t => t.id === `ticket:${ticket.key}`) || null
+    const terminal = terminalFor('ticket', { key: ticket.key })
     const pr = ticketPrs[0] || null
     const rebasable = ticketPrs.find(p => p.state === 'OPEN' && p.repo === config.repoName && p.base) || null
-    const rebaseTerminal = terminals.find(t => t.id === `rebase:${ticket.key}` && !t.exited) || null
+    const rebaseTerminal = terminalFor('rebase', { key: ticket.key, exited: false })
     const rebaseSession = rebaseTerminal ? live.find(s => s.embedded === rebaseTerminal.id) || null : null
     const run = runs.find(r => r.ticket === ticket.key) || null
     const attention = Boolean(claudeNeedsYou(session) || claudeNeedsYou(rebaseSession) || (pr && prNeedsYou(pr)) || run?.status === 'waiting')
@@ -165,7 +166,7 @@ function compose(data, timer, config, terminals = []) {
   const reviews = (data.github?.reviews || [])
     .filter(pr => !/\[bot\]$|^dependabot$|^renovate$/.test(pr.author))
     .map(pr => {
-      const terminal = terminals.find(t => t.id === `review:${pr.id}` && !t.exited) || null
+      const terminal = terminalFor('review', { prId: pr.id, exited: false })
       const reviewedByMe = pr.myReview && !pr.myReview.stale
       const inMyRepos = myRepos.has(pr.repo)
       return {

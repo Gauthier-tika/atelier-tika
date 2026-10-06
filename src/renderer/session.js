@@ -645,13 +645,13 @@ function showList() {
   $('session').hidden = true
   renderNav()
   renderNavSessions()
-  if (terminal?.prId) setTab('reviews')
+  if (terminal?.role === 'review') setTab('reviews')
   else if (terminal) setTab('mine')
   const row = terminal?.key && document.querySelector(`[data-ticket="${terminal.key}"] [data-act="claude"]`)
   row?.focus()
 }
 
-const isEditor = t => t.id.startsWith('editor:')
+const isEditor = t => t.role === 'editor'
 const editorPaneOpen = (state, t) => state.terminals.some(x => x.id === `${t.id}~editor` && !x.exited)
 
 const runOf = t => t.runId ? ui.state?.runs.find(r => r.id === t.runId) || null : null
@@ -673,14 +673,14 @@ function sessionStatus(terminal) {
 }
 
 function sessionName(t) {
-  if (t.key) return `${t.key}${t.id.startsWith('rebase:') ? ' rebase' : ''}`
-  if (t.prId) return (t.label.match(/#\d+/) || ['Review'])[0]
-  if (isEditor(t)) return t.id.replace(/^editor:/, '')
-  return t.label.replace(/^(Claude|Terminal) in /, '')
+  if (t.role === 'rebase') return `${t.key} rebase`
+  if (t.role === 'ticket') return t.key
+  if (t.role === 'review') return `#${t.prNumber}`
+  return t.repo || t.label
 }
 
 function sessionDetail(t) {
-  if (t.prId) return t.label.replace(/^Review of [^:]+: /, '')
+  if (t.role === 'review') return t.title
   const run = runOf(t)
   if (run) return [run.ticket, run.stage].filter(Boolean).join(' · ') || 'Workflow'
   if (t.key) return t.label

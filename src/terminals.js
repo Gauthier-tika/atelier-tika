@@ -27,7 +27,20 @@ class Terminals {
     return this.items.get(id)
   }
 
-  spawn(id, { cwd, args = [], label, key = null, prId = null, runId = null, kind = 'claude', parent = null, command = null, env: extraEnv = {} }) {
+  alive(id, { keepChildren = false } = {}) {
+    const item = this.items.get(id)
+    if (item && !item.exited) return item
+    if (item) this.close(id, { keepChildren })
+    return null
+  }
+
+  nextId(base) {
+    let n = 1
+    while (this.items.has(`${base}${n}`)) n++
+    return `${base}${n}`
+  }
+
+  spawn(id, { cwd, args = [], label, role = null, key = null, prId = null, prNumber = null, title = null, runId = null, repo = null, kind = 'claude', parent = null, command = null, env: extraEnv = {} }) {
     const existing = this.items.get(id)
     if (existing && !existing.exited) return existing
     const childEnv = { ...env, ...extraEnv, TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'atelier' }
@@ -42,7 +55,7 @@ class Terminals {
       env: childEnv
     })
     const item = {
-      id, key, prId, runId, label, cwd, kind, parent, pid: child.pid, startedAt: Date.now(), exited: false, exitCode: null,
+      id, role, key, prId, prNumber, title, runId, repo, label, cwd, kind, parent, pid: child.pid, startedAt: Date.now(), exited: false, exitCode: null,
       pty: child, chunks: [], length: 0, offset: 0, sizes: [{ at: 0, ...this.size }]
     }
     this.items.set(id, item)
@@ -116,9 +129,7 @@ class Terminals {
   spawnShell(parent) {
     const owner = this.items.get(parent)
     if (!owner) throw new Error('That session is gone')
-    let n = 1
-    while (this.items.has(`${parent}~shell-${n}`)) n++
-    return this.spawn(`${parent}~shell-${n}`, { cwd: owner.cwd, kind: 'shell', parent, label: 'Shell' })
+    return this.spawn(this.nextId(`${parent}~shell-`), { cwd: owner.cwd, kind: 'shell', parent, label: 'Shell' })
   }
 
   spawnEditor(parent) {

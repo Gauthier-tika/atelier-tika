@@ -260,10 +260,9 @@ function editorChoices() {
   })
 }
 
-function openEditorView(id, cwd, label) {
-  const existing = terminals.get(id)
-  if (existing?.exited) terminals.close(id)
-  terminals.spawn(id, { label, cwd, kind: 'terminal', command: config.editor.command, args: configModule.editorArgs(config.editor, cwd) })
+function openEditorView(repo) {
+  const id = `editor:${repo.name}`
+  if (!terminals.alive(id)) terminals.spawn(id, { role: 'editor', repo: repo.name, label: `${config.editor.name} in ${repo.name}`, cwd: repo.dir, kind: 'terminal', command: config.editor.command, args: configModule.editorArgs(config.editor, repo.dir) })
   return id
 }
 const ticket = key => tickets().find(t => t.key === key)
@@ -271,6 +270,7 @@ const ticket = key => tickets().find(t => t.key === key)
 function spawnRun(run, args) {
   const cwd = [run.cwd, config.workflows.find(w => w.id === run.workflow)?.cwd, config.repoDir].find(dir => dir && fs.existsSync(dir))
   terminals.spawn(run.terminal, {
+    role: 'run',
     runId: run.id,
     label: run.label,
     cwd,
@@ -420,14 +420,11 @@ const actions = {
     const id = `ticket:${key}`
     const embedded = terminals.get(id)
     if (embedded && !embedded.exited && !fresh) return { view: id }
-    if (view.session && !view.session.embedded && !fresh) {
-      if (!wm.desktop) throw new Error(`This session runs in ${config.terminal.name}, and Atelier cannot switch windows on this desktop`)
-      if (await claude.focus(config, view.session.id)) return `This session runs in ${config.terminal.name}, so Atelier switched to it`
-      throw new Error('The Claude session is running in another terminal, but its window was not found')
-    }
+    if (view.session && !view.session.embedded && !fresh) return actions.focusSession({ id: view.session.id })
     if (embedded) terminals.close(id, { keepChildren: true })
     const resume = !fresh && view.previous
     terminals.spawn(id, {
+      role: 'ticket',
       key,
       label: view.summary,
       cwd: resume ? launch.directoryFor(config, null, view.previous.cwd) : config.repoDir,
@@ -450,11 +447,11 @@ const actions = {
     const pr = view.rebasable
     if (!pr) throw new Error(`${key} has no open pull request in ${config.repoName}`)
     const id = `rebase:${key}`
-    const embedded = terminals.get(id)
-    if (embedded && !embedded.exited) return { view: id }
-    if (embedded) terminals.close(id)
+    if (terminals.alive(id)) return { view: id }
     const spawnClaude = context => terminals.spawn(id, {
+      role: 'rebase',
       key,
+      prNumber: pr.number,
       label: `Rebase of #${pr.number} onto ${pr.base}`,
       cwd: context.dir,
       args: [rebase.prompt(key, pr, context, { withSapling: data.sapling, repoDir: config.repoDir })]
@@ -478,11 +475,13 @@ const actions = {
     const pr = data.github?.reviews.find(p => p.id === id) || data.github?.mine.find(p => p.id === id)
     if (!pr) throw new Error('That pull request is no longer listed')
     const termId = `review:${pr.id}`
-    const embedded = terminals.get(termId)
-    if (embedded && !embedded.exited) return { view: termId }
-    if (embedded) terminals.close(termId)
+    if (terminals.alive(termId)) return { view: termId }
     terminals.spawn(termId, {
+      role: 'review',
       prId: pr.id,
+      prNumber: pr.number,
+      title: pr.title,
+      repo: pr.repo,
       label: `Review of ${pr.repo}#${pr.number}: ${pr.title}`,
       cwd: launch.directoryFor(config, pr.repo),
       args: [configModule.fill(config.reviewPrompt, { number: pr.number })]
@@ -492,19 +491,15 @@ const actions = {
 
   claudeRepo({ name }) {
     const repo = repoNamed(name)
-    let n = 1
-    while (terminals.get(`repo:${repo.name}:${n}`)) n++
-    const id = `repo:${repo.name}:${n}`
-    terminals.spawn(id, { label: `Claude in ${repo.name}`, cwd: repo.dir })
+    const id = terminals.nextId(`repo:${repo.name}:`)
+    terminals.spawn(id, { role: 'repo', repo: repo.name, label: `Claude in ${repo.name}`, cwd: repo.dir })
     return { view: id }
   },
 
   shellRepo({ name }) {
     const repo = repoNamed(name)
-    let n = 1
-    while (terminals.get(`term:${repo.name}:${n}`)) n++
-    const id = `term:${repo.name}:${n}`
-    terminals.spawn(id, { label: `Terminal in ${repo.name}`, cwd: repo.dir, kind: 'terminal' })
+    const id = terminals.nextId(`term:${repo.name}:`)
+    terminals.spawn(id, { role: 'repo', repo: repo.name, label: `Terminal in ${repo.name}`, cwd: repo.dir, kind: 'terminal' })
     return { view: id }
   },
 
@@ -520,7 +515,7 @@ const actions = {
   editorRepo({ name }) {
     const repo = repoNamed(name)
     if (editorWindow()) return launch.editorWindow(config.editor, repo.dir)
-    return { view: openEditorView(`editor:${repo.name}`, repo.dir, `${config.editor.name} in ${repo.name}`) }
+    return { view: openEditorView(repo) }
   },
 
 
@@ -537,9 +532,7 @@ const actions = {
   runResume({ id }) {
     const run = runs.get(id)
     if (!run.session) throw new Error('This run started before Atelier recorded its Claude session')
-    const terminal = terminals.get(run.terminal)
-    if (terminal && !terminal.exited) return { view: run.terminal }
-    if (terminal) terminals.close(run.terminal, { keepChildren: true })
+    if (terminals.alive(run.terminal, { keepChildren: true })) return { view: run.terminal }
     runs.resumed(run.id)
     spawnRun(run, ['--resume', run.session])
     return { view: run.terminal }
@@ -841,7 +834,7 @@ async function screenshot() {
     await new Promise(resolve => setTimeout(resolve, 600))
     await win.webContents.executeJavaScript(`openSession(${JSON.stringify(result.view)})`)
     await new Promise(resolve => setTimeout(resolve, 800))
-    if (!result.view.startsWith('ticket:')) await win.webContents.executeJavaScript(`split(${JSON.stringify(result.view)}, 'row')`)
+    if (terminals.get(result.view).role !== 'ticket') await win.webContents.executeJavaScript(`split(${JSON.stringify(result.view)}, 'row')`)
     await new Promise(resolve => setTimeout(resolve, 1500))
   }
   const image = await win.webContents.capturePage()

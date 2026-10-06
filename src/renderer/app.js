@@ -802,7 +802,7 @@ function renderMine(state) {
     }).join(''))
   }
 
-  const repoTerminals = state.terminals.filter(t => t.kind === 'claude' && !t.key && !t.prId && !t.runId && !t.exited)
+  const repoTerminals = state.terminals.filter(t => t.role === 'repo' && t.kind === 'claude' && !t.exited)
   const outside = state.looseSessions.filter(s => !s.embedded)
   if (repoTerminals.length || outside.length) {
     parts.push(`<h3>Claude sessions without a ticket <span class="count">${repoTerminals.length + outside.length}</span></h3>`)
@@ -811,7 +811,7 @@ function renderMine(state) {
       return `<div class="row">
         <button class="title" data-act="open-session" data-id="${esc(t.id)}" title="Open this session">${esc(t.session?.title || t.session?.first || t.session?.prompt || t.label)}</button>
         <span class="chip ${color}"><span class="glyph claude">${G.claude}</span><span class="label">${label}</span></span>
-        <span class="meta code">${esc(t.label.replace(/^Claude in /, ''))}</span>
+        <span class="meta code">${esc(t.repo)}</span>
       </div>`
     }).join(''))
     parts.push(outside.map(s => {
