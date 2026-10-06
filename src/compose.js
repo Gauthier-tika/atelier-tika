@@ -93,6 +93,7 @@ function compose(data, timer, config, terminals = []) {
     const station = columns.findIndex(column => column.statusIds.includes(ticket.status.id))
     const column = station >= 0 ? columns[station].name : ticket.status.name
     if (hidden.has(column)) return null
+    if (config.mineColumns && station >= 0 && !stageOf[columns[station].id] && !config.mineColumns.includes(columns[station].id)) return null
     const ticketPrs = prs
       .filter(pr => keysOf(pr).includes(ticket.key))
       .sort((a, b) => (a.state === 'OPEN' ? 0 : 1) - (b.state === 'OPEN' ? 0 : 1) || b.updatedAt.localeCompare(a.updatedAt))

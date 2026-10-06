@@ -88,6 +88,7 @@ function jiraSettings() {
     boardId: config.boardId || (data.boards?.length === 1 ? data.boards[0].id : null),
     columns: (data.columns || []).map(({ id, name }) => ({ id, name })),
     unassignedColumns: config.unassignedColumns,
+    mineColumns: config.mineColumns,
     filters: config.filters
   }
 }
@@ -261,6 +262,12 @@ const actions = {
     config.unassignedColumns = (Array.isArray(columns) ? columns : []).filter(c => typeof c === 'string')
     configModule.save({ unassignedColumns: config.unassignedColumns })
     loaders.jira()
+  },
+
+  jiraMine({ columns }) {
+    config.mineColumns = Array.isArray(columns) ? columns.filter(c => typeof c === 'string') : null
+    configModule.save({ mineColumns: config.mineColumns })
+    push()
   },
 
   jiraFilters({ filters }) {

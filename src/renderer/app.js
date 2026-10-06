@@ -45,6 +45,13 @@ const ui = {
     }
   })(),
   tab: 'mine',
+  settingsTab: (() => {
+    try {
+      return localStorage.getItem('atelier.settingsTab') === 'tickets' ? 'tickets' : 'global'
+    } catch {
+      return 'global'
+    }
+  })(),
   hiddenRepos: (() => {
     try {
       return new Set(JSON.parse(localStorage.getItem('atelier.hiddenRepos') || '[]'))
@@ -425,9 +432,19 @@ const THEMES = [
 ]
 
 function renderSettings(state) {
-  const current = document.documentElement.dataset.theme || 'default'
+  const section = ui.settingsTab
   $('settings').innerHTML = `<h2 id="settings-title">Settings</h2>
-    <h3>Theme</h3>
+    <div class="subtabs" role="tablist" aria-label="Settings sections">${SETTINGS_TABS.map(tab => `
+      <button role="tab" id="settings-tab-${tab.id}" aria-selected="${tab.id === section}" aria-controls="settings-body" data-act="settings-tab" data-section="${tab.id}">${tab.label}</button>`).join('')}
+    </div>
+    <div id="settings-body" role="tabpanel" aria-labelledby="settings-tab-${section}">${section === 'tickets' ? jiraSettings(state) : globalSettings(state)}</div>`
+}
+
+const SETTINGS_TABS = [{ id: 'global', label: 'Global' }, { id: 'tickets', label: 'Tickets' }]
+
+function globalSettings(state) {
+  const current = document.documentElement.dataset.theme || 'default'
+  return `<h3>Theme</h3>
     <div class="themes" role="radiogroup" aria-label="Theme">${THEMES.map(theme => `
       <button class="theme-option" role="radio" aria-checked="${theme.id === current}" data-act="set-theme" data-theme="${theme.id}">
         <span class="swatches" aria-hidden="true">${theme.swatches.map(color => `<i style="background: ${color}"></i>`).join('')}</span>
@@ -450,8 +467,7 @@ function renderSettings(state) {
       <span class="hint">${state.reposPinned ? 'Not used: "repos" in config.json lists the repositories'
         : state.repos.length ? `${state.repos.length} ${state.repos.length === 1 ? 'repository' : 'repositories'}, each a folder right inside it with a .git or .sl directory`
         : 'No repository: Atelier looks for folders right inside it with a .git or .sl directory'}</span>
-    </div>
-    ${jiraSettings(state)}`
+    </div>`
 }
 
 function columnPicks(columns, checked, attrs, taken = new Map()) {
@@ -481,7 +497,12 @@ function jiraColumns(jira, loading) {
   if (!jira.connected || !jira.boardId) return ''
   if (!jira.columns.length) return `<p class="setting-hint">${loading ? 'Loading the board columns…' : 'The board shows no column.'}</p>`
   const owners = jira.filters.flatMap((filter, index) => filter.columns.map(column => [column, index]))
-  return `<h3>Unassigned</h3>
+  const filtered = new Map(owners.map(([column, owner]) => [column, jira.filters[owner].label]))
+  const mine = jira.columns.filter(c => !filtered.has(c.id)).map(c => c.id)
+  return `<h3>My tickets</h3>
+    <p class="setting-hint">Your tickets in these columns show under My tickets. Columns in a filter show there instead.</p>
+    ${columnPicks(jira.columns, jira.mineColumns || mine, 'data-pick="mine-column"', filtered)}
+    <h3>Unassigned</h3>
     <p class="setting-hint">Unassigned tickets in these columns show under Unassigned. Check none to hide the tab.</p>
     ${columnPicks(jira.columns, jira.unassignedColumns, 'data-pick="unassigned-column"')}
     <h3>Filters</h3>
@@ -1168,6 +1189,13 @@ const handlers = {
   },
   'choose-dev-dir': () => act('chooseDevDir', {}, 'choose-dev-dir'),
   'go-settings': () => setTab('settings'),
+  'settings-tab'(el) {
+    ui.settingsTab = el.dataset.section === 'tickets' ? 'tickets' : 'global'
+    try {
+      localStorage.setItem('atelier.settingsTab', ui.settingsTab)
+    } catch {}
+    renderSettings(ui.state)
+  },
   async 'filter-add'() {
     const filters = ui.state.jira.filters
     const result = await act('jiraFilters', { filters: [...filters, { label: `Filter ${filters.length + 1}`, columns: [] }] })
@@ -1217,6 +1245,15 @@ document.addEventListener('change', event => {
   if (pick === 'jira-board') {
     event.target.blur()
     if (event.target.value) act('jiraBoard', { id: Number(event.target.value) })
+    return
+  }
+  if (pick === 'mine-column') {
+    const column = event.target.dataset.column
+    const taken = new Set(jira.filters.flatMap(filter => filter.columns))
+    const all = jira.columns.map(c => c.id).filter(c => !taken.has(c))
+    const current = jira.mineColumns || all
+    const next = event.target.checked ? [...current.filter(c => c !== column), column] : current.filter(c => c !== column)
+    act('jiraMine', { columns: all.every(c => next.includes(c)) ? null : next })
     return
   }
   if (pick === 'unassigned-column' || pick === 'filter-column') {

@@ -106,14 +106,16 @@ Your tickets are the ones assigned to you outside Done, on every board. A board 
 
 Then choose, among that board's columns:
 
+- **My tickets**: the columns whose tickets show under My tickets, all of them by default. Unchecked columns hide their tickets from the lists.
 - **Unassigned**: the columns whose unassigned tickets show under Unassigned, `["To Do"]` by default. With none, the tab is hidden.
 - **Filters**: each filter is a tab under My tickets, with a name and one or more columns. Your tickets in those columns show there instead of in My tickets. A column belongs to one filter at most.
 
-Both are saved in `config.json`, by the column names Jira gives them:
+These are saved in `config.json`, by the column names Jira gives them:
 
 ```json
 {
   "boardId": 17,
+  "mineColumns": ["In Progress / PR", "To Do"],
   "unassignedColumns": ["Backlog", "To Do"],
   "filters": [
     { "label": "À MEPP", "columns": ["A MEPP"], "icon": "flask" },

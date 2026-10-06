@@ -563,6 +563,30 @@ button {
 
 #settings { grid-column: 1 / -1; }
 
+.subtabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px var(--gutter) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.subtabs button {
+  padding: 7px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.subtabs button:hover { color: var(--fg); }
+
+.subtabs button[aria-selected="true"] {
+  color: var(--bright);
+  border-bottom-color: var(--cyan);
+}
+
 .panes[data-tab="reviews"] #reviews { grid-column: 1 / -1; }
 
 .pane > h2,
@@ -603,7 +627,8 @@ button {
   color: var(--comment);
 }
 
-.pane > h3 {
+.pane > h3,
+#settings-body > h3 {
   margin: 0;
   padding: 8px var(--gutter);
   background: var(--band);
@@ -615,7 +640,8 @@ button {
   gap: 8px;
 }
 
-.pane > h2 + h3 { border-top: 0; }
+.pane > h2 + h3,
+#settings-body > h3:first-child { border-top: 0; }
 .pane h3 .count { color: var(--comment); font-weight: 450; }
 
 .notice {

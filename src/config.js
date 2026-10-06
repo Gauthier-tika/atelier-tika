@@ -26,6 +26,7 @@ const defaults = {
   },
   filters: [],
   unassignedColumns: ['To Do'],
+  mineColumns: null,
   hiddenColumns: [],
   columnColors: {},
   qualifField: 'customfield_10253',
@@ -80,6 +81,7 @@ function load() {
   if (!user.unassignedColumns && user.unassignedColumn) config.unassignedColumns = [user.unassignedColumn]
   config.filters = cleanFilters(config.filters)
   config.unassignedColumns = (Array.isArray(config.unassignedColumns) ? config.unassignedColumns : []).filter(c => typeof c === 'string')
+  config.mineColumns = Array.isArray(config.mineColumns) ? config.mineColumns.filter(c => typeof c === 'string') : null
   config.jiraBase = config.jiraBase ? String(config.jiraBase).replace(/\/+$/, '') : null
   config.jiraEnvLegacy = !user.jiraEnv && !fs.existsSync(jiraEnvFile) && fs.existsSync(legacyJiraEnvFile)
   if (config.jiraEnvLegacy) config.jiraEnv = legacyJiraEnvFile
