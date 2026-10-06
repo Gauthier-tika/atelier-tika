@@ -22,7 +22,7 @@ class Jira {
     this.boardList = null
     this.qualifOptions = null
     this.accountId = null
-    this.selectFields = null
+    this.fieldList = null
   }
 
   account() {
@@ -86,21 +86,43 @@ class Jira {
     return text ? JSON.parse(text) : {}
   }
 
+  fields() {
+    this.fieldList ||= this.request('GET', '/rest/api/3/field').catch(error => {
+      this.fieldList = null
+      throw error
+    })
+    return this.fieldList
+  }
+
   async optionFields() {
-    if (this.selectFields) return this.selectFields
-    const fields = await this.request('GET', '/rest/api/3/field')
-    this.selectFields = fields
+    return (await this.fields())
       .filter(field => field.custom && ['option', 'option-with-child'].includes(field.schema?.type))
       .map(field => ({ id: field.id, name: field.name }))
       .sort((a, b) => a.name.localeCompare(b.name))
-    return this.selectFields
   }
 
   async discoverFlagField() {
-    if (this.flagField) return this.flagField
-    const fields = await this.request('GET', '/rest/api/3/field')
-    this.flagField = fields.find(f => f.name === 'Flagged')?.id || 'customfield_10021'
+    this.flagField ||= (await this.fields()).find(f => f.name === 'Flagged')?.id || 'customfield_10021'
     return this.flagField
+  }
+
+  async allowedValues(key, field) {
+    const meta = await this.request('GET', `/rest/api/3/issue/${key}/editmeta`)
+    return meta.fields?.[field]?.allowedValues || []
+  }
+
+  toTicket(issue) {
+    const f = issue.fields
+    return {
+      id: issue.id,
+      key: issue.key,
+      summary: f.summary,
+      url: `${this.config.jiraBase}/browse/${issue.key}`,
+      type: f.issuetype?.name || '',
+      priority: f.priority?.name || '',
+      status: { id: f.status.id, name: f.status.name },
+      updated: f.updated
+    }
   }
 
   myself(base, account) {
@@ -165,18 +187,11 @@ class Jira {
       const flag = f[flagField]
       if (Array.isArray(flag) && flag[0]) this.flagOption = flag[0].id
       return {
-        id: issue.id,
-        key: issue.key,
-        summary: f.summary,
-        url: `${this.config.jiraBase}/browse/${issue.key}`,
-        type: f.issuetype?.name || '',
-        priority: f.priority?.name || '',
-        status: { id: f.status.id, name: f.status.name },
+        ...this.toTicket(issue),
         blocked: Array.isArray(flag) && flag.length > 0,
         qualif: qualifField ? qualifNumber(f[qualifField]) : null,
         verification: this.config.verificationField ? f[this.config.verificationField]?.value || null : null,
-        timeSpent: f.timespent || 0,
-        updated: f.updated
+        timeSpent: f.timespent || 0
       }
     })
   }
@@ -193,20 +208,11 @@ class Jira {
         maxResults: 100
       }
     })
-    return page.issues.map(issue => ({
-      id: issue.id,
-      key: issue.key,
-      summary: issue.fields.summary,
-      url: `${this.config.jiraBase}/browse/${issue.key}`,
-      type: issue.fields.issuetype?.name || '',
-      priority: issue.fields.priority?.name || '',
-      status: { id: issue.fields.status.id, name: issue.fields.status.name },
-      updated: issue.fields.updated
-    }))
+    return page.issues.map(issue => this.toTicket(issue))
   }
 
   async assignToMe(key) {
-    this.accountId ||= (await this.request('GET', '/rest/api/3/myself')).accountId
+    this.accountId ||= (await this.myself()).accountId
     await this.request('PUT', `/rest/api/3/issue/${key}/assignee`, { body: { accountId: this.accountId } })
   }
 
@@ -221,8 +227,7 @@ class Jira {
   async setBlocked(key, blocked) {
     const field = await this.discoverFlagField()
     if (blocked && !this.flagOption) {
-      const meta = await this.request('GET', `/rest/api/3/issue/${key}/editmeta`)
-      const allowed = meta.fields?.[field]?.allowedValues || []
+      const allowed = await this.allowedValues(key, field)
       this.flagOption = (allowed.find(v => v.value === 'Impediment') || allowed[0])?.id
       if (!this.flagOption) throw new Error(`The Flagged field cannot be edited on ${key}`)
     }
@@ -235,8 +240,7 @@ class Jira {
     const field = this.config.qualif?.jiraField
     if (!field) return
     if (!this.qualifOptions) {
-      const meta = await this.request('GET', `/rest/api/3/issue/${key}/editmeta`)
-      const allowed = meta.fields?.[field]?.allowedValues || []
+      const allowed = await this.allowedValues(key, field)
       if (!allowed.length) throw new Error(`The ${this.config.qualif.label} field cannot be edited on ${key}`)
       this.qualifOptions = Object.fromEntries(allowed.map(option => [qualifNumber(option.value), option.id]))
     }

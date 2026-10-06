@@ -111,6 +111,8 @@ function phaseOf(jobs) {
   return 'done'
 }
 
+const finished = new Map()
+
 async function qualifDeploys(config, branches) {
   const workflow = config.qualif?.workflow
   if (!workflow) return {}
@@ -120,6 +122,10 @@ async function qualifDeploys(config, branches) {
     const [latest] = JSON.parse(await run('gh', ['run', 'list', '--repo', repo, '--workflow', workflow, '--branch', branch,
       '--limit', '1', '--json', 'databaseId,status,conclusion,url,createdAt,headSha']))
     if (!latest) return
+    if (latest.status === 'completed' && finished.has(latest.databaseId)) {
+      result[branch] = finished.get(latest.databaseId)
+      return
+    }
     const { jobs } = JSON.parse(await run('gh', ['run', 'view', String(latest.databaseId), '--repo', repo, '--json', 'jobs']))
     const isBuild = job => /build/i.test(job.name.split(' / ')[0])
     result[branch] = {
@@ -133,6 +139,7 @@ async function qualifDeploys(config, branches) {
       deploy: phaseOf(jobs.filter(job => !isBuild(job))),
       finishedAt: latest.status === 'completed' ? jobs.map(job => job.completedAt).filter(Boolean).sort().pop() || null : null
     }
+    if (latest.status === 'completed') finished.set(latest.databaseId, result[branch])
   }))
   return result
 }

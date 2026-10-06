@@ -191,7 +191,9 @@ const loaders = {
     return load('jira', async () => {
       const ids = [...reconcile]
       reconcile.clear()
-      return [await jira.boards(), await jira.boardColumns(), await jira.tickets(ids), await jira.unassigned(), await jira.optionFields().catch(() => null)]
+      const boards = await jira.boards()
+      const columns = await jira.boardColumns()
+      return [boards, columns, ...await Promise.all([jira.tickets(ids), jira.unassigned(), jira.optionFields().catch(() => null)])]
     }, ([boards, columns, tickets, unassigned, fields]) => {
       data.boards = boards
       data.jiraFields = fields
