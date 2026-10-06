@@ -438,6 +438,14 @@ function renderSettings(state) {
         ${editor.custom ? '<span class="hint">Set in config.json</span>' : ''}
         ${editor.found ? '' : `<span class="hint missing">${esc(editor.command)} not found</span>`}
       </button>`).join('')}
+    </div>
+    <h3>Repositories</h3>
+    <div class="dev-dir">
+      <span class="code path">${esc(state.devDir)}</span>
+      <button class="btn" data-act="choose-dev-dir" ${ui.busy.has('choose-dev-dir') ? 'disabled' : ''}><span class="glyph">${G.folder}</span><span class="t">Change</span></button>
+      <span class="hint">${state.reposPinned ? 'Not used: "repos" in config.json lists the repositories'
+        : state.repos.length ? `${state.repos.length} ${state.repos.length === 1 ? 'repository' : 'repositories'}, each a folder right inside it with a .git or .sl directory`
+        : 'No repository: Atelier looks for folders right inside it with a .git or .sl directory'}</span>
     </div>`
 }
 
@@ -455,7 +463,9 @@ function renderLaunch(state) {
   const active = document.activeElement
   if (active?.tagName === 'SELECT' && $('launch').contains(active)) return
   if (!state.repos.length) {
-    $('launch').innerHTML = ''
+    $('launch').innerHTML = `
+      <p class="launch-empty">No repository in <span class="code">${esc(state.devDir)}</span></p>
+      <button class="btn launch-claude" data-act="choose-dev-dir" title="Pick the folder that holds your repositories"><span class="glyph">${G.folder}</span><span class="t">Choose the folder</span></button>`
     return
   }
   const repo = state.repos.includes(ui.repo) ? ui.repo : state.repos[0]
@@ -1072,6 +1082,7 @@ const handlers = {
     applyTerminalTheme()
     renderSettings(ui.state)
   },
+  'choose-dev-dir': () => act('chooseDevDir', {}, 'choose-dev-dir'),
   'set-editor': el => {
     if (el.getAttribute('aria-checked') !== 'true') act('setEditor', { command: el.dataset.command })
   },

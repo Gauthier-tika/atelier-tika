@@ -285,6 +285,13 @@ button {
 
 .launch:empty { display: none; }
 
+.launch-empty {
+  margin: 0;
+  color: var(--comment);
+  font-size: var(--step--1);
+  overflow-wrap: anywhere;
+}
+
 .launch .repo {
   display: flex;
   align-items: center;
@@ -1562,7 +1569,7 @@ body:not([data-view="list"]) .panes { display: none; }
   .brand::before { content: "A"; font-size: var(--step-2); }
   .nav button, .nav button.sub { grid-template-columns: 1fr; justify-items: center; padding: 9px 0; }
   .nav button.sub .glyph { width: 14px; height: 14px; }
-  .nav .t, .launch .repo, .launch-claude .t, .launch-tools .t, .launch-workflows :is(.t, .state), .session-list :is(.name, .state, .detail), .nav-sessions h2 { display: none; }
+  .nav .t, .launch .repo, .launch-empty, .launch-claude .t, .launch-tools .t, .launch-workflows :is(.t, .state), .session-list :is(.name, .state, .detail), .nav-sessions h2 { display: none; }
   .nav .count { position: absolute; top: 2px; right: 4px; font-size: 10px; }
   .session-list button { grid-template-columns: 1fr; justify-items: center; padding: 9px 0; }
   .launch { padding: 10px 6px; }
@@ -1610,6 +1617,17 @@ body:not([data-view="list"]) .panes { display: none; }
 .editor-option { gap: 4px; min-width: 180px; align-content: start; }
 .editor-option .hint { color: var(--comment); font-size: var(--step--1); }
 .editor-option .hint.missing { color: var(--sand); }
+
+.dev-dir {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 16px var(--gutter);
+}
+
+.dev-dir .path { color: var(--bright); }
+.dev-dir .hint { flex-basis: 100%; color: var(--comment); font-size: var(--step--1); }
 
 .theme-option .swatches { display: flex; gap: 4px; }
 .theme-option .swatches i { width: 20px; height: 20px; border-radius: 4px; border: 1px solid color-mix(in srgb, var(--bright) 15%, transparent); }

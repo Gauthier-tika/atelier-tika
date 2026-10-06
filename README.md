@@ -14,7 +14,7 @@ It is built for one setup (Linux with Hyprland, Ghostty and Sapling) and is not 
 - **PRs and reviews**: GitHub PRs and their checks, rebase a ticket's PR, start a Claude review of a PR.
 - **Qualifs**: which qualif environment holds which ticket, sync the Jira Qualif field, clear a qualif's caches.
 - **Workflows**: start a Claude Code run from a button, follow its stages, answer its questions from Atelier and see its outcome and pull request. See [Workflows](#workflows).
-- **Repo tools**: open Claude, a shell or your editor in any repo under `~/Dev` (`devDir`), and `sl web` when Sapling is installed.
+- **Repo tools**: open Claude, a shell or your editor in any repo under `~/Dev`, and `sl web` when Sapling is installed. Pick another folder under **Settings**, saved as `devDir`.
 
 ## Requirements
 
@@ -89,6 +89,8 @@ Defaults live in `src/config.js`. Override any of them in `~/.config/atelier/con
   "pollSeconds": 120
 }
 ```
+
+Atelier lists as repositories the folders right inside `devDir` that hold a `.git` or `.sl` directory. Change `devDir` under **Settings**, or list the repositories yourself with `"repos": ["~/work/shop", "~/work/infra"]`, which takes precedence. `repoDir` is where ticket sessions start.
 
 `hiddenColumns` drops tickets in those columns from the lists, for example `["Time Report"]`. `columnColors` tints a ticket by its column, with `orange` or `green`, for example `{ "In progress": "orange", "Recette PO": "green" }`. Both use the column names Atelier shows.
 

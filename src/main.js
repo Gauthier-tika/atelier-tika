@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, clipboard, Menu } = require('electron')
+const { app, BrowserWindow, ipcMain, clipboard, dialog, Menu } = require('electron')
 const path = require('node:path')
 const configModule = require('./config')
 const { Jira } = require('./jira')
@@ -75,7 +75,7 @@ function repoNamed(name) {
   return repo
 }
 
-const current = () => ({ ...compose({ ...data, qualifs: qualifs.list(), runs: runs.list() }, timer.state, config, terminals.list()), workflows: config.workflows.map(({ id, label, description }) => ({ id, label, description: description || '' })), repos: repos().map(r => r.name), sapling: data.sapling, editor: { name: config.editor.name, mode: config.editor.mode }, editors: editorChoices(), terminal: { name: config.terminal.name, switching: Boolean(wm.desktop) } })
+const current = () => ({ ...compose({ ...data, qualifs: qualifs.list(), runs: runs.list() }, timer.state, config, terminals.list()), workflows: config.workflows.map(({ id, label, description }) => ({ id, label, description: description || '' })), repos: repos().map(r => r.name), sapling: data.sapling, editor: { name: config.editor.name, mode: config.editor.mode }, editors: editorChoices(), terminal: { name: config.terminal.name, switching: Boolean(wm.desktop) }, devDir: configModule.tilde(config.devDir), reposPinned: Boolean(config.repos?.length) })
 
 const qualifBranches = () => data.github ? qualifs.list().map(q => `qualif-${data.github.viewer}-${q.number}`) : []
 
@@ -180,6 +180,21 @@ const actions = {
     config.editor = { ...editor }
     terminals.editor = config.editor
     push()
+  },
+
+  async chooseDevDir() {
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+      title: 'Folder that holds your repositories',
+      defaultPath: config.devDir,
+      properties: ['openDirectory']
+    })
+    if (canceled || !filePaths.length) return
+    config.devDir = filePaths[0]
+    const shown = configModule.tilde(config.devDir)
+    configModule.save({ devDir: shown })
+    push()
+    const count = repos().length
+    return count ? `Found ${count} ${count === 1 ? 'repository' : 'repositories'} in ${shown}` : `No repository in ${shown}`
   },
 
   async claudeOpen({ key, fresh }) {

@@ -6,6 +6,7 @@ const wm = require('./wm')
 const home = os.homedir()
 const bundled = name => path.join(__dirname, '..', 'bin', name)
 const expand = p => p.replace(/^~(?=$|\/)/, home)
+const tilde = p => p === home || p.startsWith(home + '/') ? '~' + p.slice(home.length) : p
 
 const defaults = {
   jiraBase: 'https://tikamoon.atlassian.net',
@@ -95,4 +96,4 @@ function save(changes) {
 const editorArgs = (editor, directory) => editor.args.map(arg => arg.replaceAll('{dir}', directory))
 const terminalArgs = (terminal, values) => terminal.args.map(arg => arg.replace(/\{(dir|shell|command)\}/g, (_, name) => values[name]))
 
-module.exports = { load, save, home, expand, editors, editorArgs, terminalArgs }
+module.exports = { load, save, home, expand, tilde, editors, editorArgs, terminalArgs }
