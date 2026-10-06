@@ -44,6 +44,14 @@ const ui = {
     }
   })(),
   tab: 'mine',
+  hiddenRepos: (() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem('atelier.hiddenRepos') || '[]'))
+    } catch {
+      return new Set()
+    }
+  })(),
+  repoMenu: false,
   confirm: null,
   drafts: {},
   logs: new Set(),
@@ -483,7 +491,7 @@ function navCount(state, tab) {
   if (!state) return 0
   if (tab === 'unassigned') return state.unassigned.length
   if (tab === 'qualifs') return state.qualifs.items.length
-  if (tab === 'reviews') return state.reviews.filter(pr => pr.group === 'waiting').length
+  if (tab === 'reviews') return state.reviews.filter(pr => pr.group === 'waiting' && !ui.hiddenRepos.has(pr.repo)).length
   if (tab === 'settings') return 0
   return ticketsIn(state, tab).length
 }
@@ -791,13 +799,32 @@ function reviewRow(pr) {
   </article>`
 }
 
+function repoFilter(state) {
+  const repos = [...new Set(state.reviews.map(pr => pr.repo))].sort((a, b) => a.localeCompare(b))
+  if (repos.length < 2) return ''
+  const shown = repos.filter(repo => !ui.hiddenRepos.has(repo))
+  const label = shown.length === repos.length ? 'All repositories' : shown.length === 1 ? shown[0] : `${shown.length} of ${repos.length} repositories`
+  return `<div class="repo-filter">
+    <button class="repo-filter-button" data-act="toggle-repo-menu" aria-haspopup="true" aria-expanded="${ui.repoMenu}">${esc(label)}</button>
+    ${ui.repoMenu ? `<div class="repo-filter-menu" role="group" aria-label="Repositories">
+      ${repos.map(repo => `<label><input type="checkbox" data-pick="review-repo" data-repo="${esc(repo)}" ${ui.hiddenRepos.has(repo) ? '' : 'checked'}> <span class="code">${esc(repo)}</span></label>`).join('')}
+      <div class="repo-filter-actions">
+        <button class="btn quiet" data-act="repos-all">All</button>
+        <button class="btn quiet" data-act="repos-none">None</button>
+      </div>
+    </div>` : ''}
+  </div>`
+}
+
 function renderReviews(state) {
-  const group = name => state.reviews.filter(pr => pr.group === name)
+  const visible = state.reviews.filter(pr => !ui.hiddenRepos.has(pr.repo))
+  const group = name => visible.filter(pr => pr.group === name)
   const waiting = group('waiting')
   const approved = group('approved')
   const reviewed = group('reviewed')
   const elsewhere = group('elsewhere')
   const parts = [`<h2 id="reviews-title">To review <span class="count">${waiting.length || ''}</span></h2>`]
+  parts.push(repoFilter(state))
   if (state.reviewRepos.length) parts.push(`<p class="repos">Open pull requests from your teammates in <span class="code">${state.reviewRepos.map(esc).join(', ')}</span>, longest waiting first</p>`)
   if (state.loading.github && !state.reviews.length) {
     parts.push('<p class="empty">Loading open pull requests…</p>')
@@ -924,12 +951,26 @@ async function act(name, payload, busyKey) {
 
 const pickedRepo = () => $('repo-pick')?.value || ui.state.repos[0]
 
+function setHiddenRepos(repos) {
+  ui.hiddenRepos = new Set(repos)
+  try {
+    localStorage.setItem('atelier.hiddenRepos', JSON.stringify([...ui.hiddenRepos]))
+  } catch {}
+  render()
+}
+
 const handlers = {
   noop() {},
   'toggle-elsewhere': () => {
     ui.showElsewhere = !ui.showElsewhere
     render()
   },
+  'toggle-repo-menu': () => {
+    ui.repoMenu = !ui.repoMenu
+    render()
+  },
+  'repos-all': () => setHiddenRepos([]),
+  'repos-none': () => setHiddenRepos(ui.state.reviews.map(pr => pr.repo)),
   refresh: () => act('refresh'),
   'open-url': el => act('openUrl', { url: el.dataset.url }),
   'claude-repo': () => act('claudeRepo', { name: pickedRepo() }),
@@ -1041,6 +1082,10 @@ const handlers = {
 }
 
 document.addEventListener('click', event => {
+  if (ui.repoMenu && !event.target.closest('.repo-filter')) {
+    ui.repoMenu = false
+    render()
+  }
   const el = event.target.closest('[data-act]')
   if (!el || el.disabled) return
   event.preventDefault()
@@ -1048,6 +1093,13 @@ document.addEventListener('click', event => {
 })
 
 document.addEventListener('change', event => {
+  if (event.target.dataset?.pick === 'review-repo') {
+    const hidden = new Set(ui.hiddenRepos)
+    if (event.target.checked) hidden.delete(event.target.dataset.repo)
+    else hidden.add(event.target.dataset.repo)
+    setHiddenRepos(hidden)
+    return
+  }
   const pick = event.target.dataset?.pick
   if (pick === 'qualif-add' || pick === 'qualif-ticket') {
     const value = event.target.value
@@ -1105,7 +1157,10 @@ document.addEventListener('keydown', event => {
     if (event.key === 'Escape') event.target.blur()
     return
   }
-  if (event.key === 'Escape' && ui.confirm) handlers.cancel()
+  if (event.key === 'Escape' && ui.repoMenu) {
+    ui.repoMenu = false
+    render()
+  } else if (event.key === 'Escape' && ui.confirm) handlers.cancel()
   else if (event.key === 'r' && !event.ctrlKey && !event.metaKey) act('refresh')
   else if (TABS[Number(event.key) - 1]) setTab(TABS[Number(event.key) - 1])
 })

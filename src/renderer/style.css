@@ -1140,6 +1140,54 @@ button {
 
 .more:hover { color: var(--fg); }
 
+.repo-filter { position: relative; margin: 8px var(--gutter) 0; }
+
+.repo-filter-button {
+  color: var(--comment);
+  font-size: var(--step--1);
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.repo-filter-button::after { content: " ▾"; }
+.repo-filter-button:hover, .repo-filter-button[aria-expanded="true"] { color: var(--fg); background: var(--hover); }
+
+.repo-filter-menu {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+}
+
+.repo-filter-menu label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: var(--step--1);
+  cursor: pointer;
+}
+
+.repo-filter-menu label:hover { background: var(--hover); }
+
+.repo-filter-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
 .repos { color: var(--comment); font-size: var(--step--1); margin: 12px var(--gutter) 4px; }
 
 /* Session and Sapling Web views: a panel in place of the lists */
