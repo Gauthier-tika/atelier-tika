@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, clipboard, dialog, Menu } = require('electron')
+const { app, BrowserWindow, ipcMain, clipboard, Menu } = require('electron')
 const fs = require('node:fs')
 const path = require('node:path')
 const configModule = require('./config')
@@ -8,14 +8,13 @@ const claude = require('./claude')
 const launch = require('./launch')
 const wm = require('./wm')
 const { Timer } = require('./timer')
-const { compose, qualifPlan, syncedBranch, inProgressStation } = require('./compose')
+const { compose, syncedBranch } = require('./compose')
 const { Qualifs } = require('./qualifs')
-const { run, onPath, env } = require('./run')
-const rebase = require('./rebase')
+const { onPath } = require('./run')
 const sapling = require('./sapling')
 const { Terminals } = require('./terminals')
-const { Runs, dir: runsDir } = require('./runs')
-const { THEMES, themeNamed } = require('./themes')
+const { Runs } = require('./runs')
+const { themeNamed } = require('./themes')
 
 app.setName('atelier')
 const config = configModule.load()
@@ -74,12 +73,6 @@ function listRepos() {
 
 let repoList = null
 const repos = () => repoList ||= listRepos()
-
-function repoNamed(name) {
-  const repo = repos().find(r => r.name === name)
-  if (!repo) throw new Error(`${name} is not a repository in ${config.devDir}`)
-  return repo
-}
 
 function jiraSettings() {
   const account = jira.account()
@@ -223,13 +216,7 @@ function refreshAll() {
   return Promise.all([loaders.jira(), loaders.github(), loaders.time(), refreshClaude()])
 }
 
-function refreshBar() {
-  run('qs', ['ipc', '-c', 'desktop', 'call', 'desktop', 'refresh'], { timeout: 5000 }).catch(() => {})
-}
-
 const tickets = () => data.tickets || []
-
-const editorWindow = () => config.editor.mode === 'window'
 
 const installed = new Map()
 function editorChoices() {
@@ -240,439 +227,31 @@ function editorChoices() {
   })
 }
 
-function openEditorView(repo) {
-  const id = `editor:${repo.name}`
-  if (!terminals.alive(id)) terminals.spawn(id, { role: 'editor', repo: repo.name, label: `${config.editor.name} in ${repo.name}`, cwd: repo.dir, kind: 'terminal', command: config.editor.command, args: configModule.editorArgs(config.editor, repo.dir) })
-  return id
-}
-const ticket = key => tickets().find(t => t.key === key)
-
-function spawnRun(run, args) {
-  const cwd = [run.cwd, config.workflows.find(w => w.id === run.workflow)?.cwd, config.repoDir].find(dir => dir && fs.existsSync(dir))
-  terminals.spawn(run.terminal, {
-    role: 'run',
-    runId: run.id,
-    label: run.label,
-    cwd,
-    args,
-    env: {
-      ATELIER_RUN_ID: run.id,
-      ATELIER_RUNS_DIR: runsDir,
-      PATH: `${path.join(__dirname, '..', 'bin')}:${env.PATH}`
-    }
-  })
-}
-
-const reloads = {
-  jira() {
-    jira.qualifOptions = null
-    loaders.jira()
-  },
-  deploys() {
-    data.deploys = null
-    loaders.deploys()
-  }
+const ctx = {
+  config,
+  data,
+  jira,
+  timer,
+  qualifs,
+  runs,
+  terminals,
+  loaders,
+  push,
+  window: () => win,
+  repos,
+  resetRepos: () => { repoList = null },
+  tickets,
+  ticketView
 }
 
 const actions = {
   refresh: () => refreshAll(),
-
   openUrl: ({ url }) => launch.openUrl(url),
-
-  setTheme({ theme }) {
-    if (!THEMES.some(t => t.id === theme)) throw new Error(`Unknown theme ${theme}`)
-    config.theme = theme === 'default' ? null : theme
-    configModule.save({ theme: config.theme })
-    win.setBackgroundColor(themeNamed(theme).terminal.background)
-  },
-
-  setEditor({ command }) {
-    const editor = configModule.editors.find(e => e.command === command)
-    if (!editor) throw new Error(`Unknown editor ${command}`)
-    configModule.save({ editor: editor === configModule.editors[0] ? null : editor })
-    config.editor = { ...editor }
-    terminals.editor = config.editor
-    push()
-  },
-
-  async jiraConnect({ base, email, token }) {
-    let site = String(base || '').trim().replace(/\/+$/, '')
-    if (site && !/^https?:\/\//.test(site)) site = `https://${site}`
-    let origin
-    try {
-      origin = new URL(site).origin
-    } catch {
-      throw new Error('Enter the Jira site, such as https://your-team.atlassian.net')
-    }
-    email = String(email || '').trim()
-    const saved = jira.account()
-    token = String(token || '').trim() || (saved?.email === email ? saved.token : '')
-    if (!email) throw new Error('Enter the e-mail of your Atlassian account')
-    if (!token) throw new Error('Enter an API token for that account')
-    const me = await jira.myself(origin, { email, token })
-    const file = config.jiraEnvLegacy ? configModule.jiraEnvFile : config.jiraEnv
-    jira.saveAccount(file, { base: origin, email, token })
-    config.jiraEnv = file
-    config.jiraEnvLegacy = false
-    const siteChanged = config.jiraBase !== origin
-    config.jiraBase = origin
-    if (siteChanged) config.boardId = null
-    configModule.save({ jiraBase: origin, ...(siteChanged ? { boardId: null } : {}) })
-    jira.reset()
-    Object.assign(data, siteChanged ? { boards: null, columns: null, tickets: null, unassigned: null } : {})
-    loaders.jira()
-    loaders.time()
-    return `Connected to ${new URL(origin).host} as ${me.displayName || email}`
-  },
-
-  jiraBoard({ id }) {
-    const board = data.boards?.find(b => b.id === Number(id))
-    if (!board) throw new Error('That board is no longer listed')
-    config.boardId = board.id
-    configModule.save({ boardId: board.id })
-    jira.columns = null
-    data.columns = null
-    data.unassigned = null
-    loaders.jira()
-    return `Atelier now sorts your tickets by the columns of ${board.name}`
-  },
-
-  setSetting({ key, value }) {
-    const reload = configModule.setSetting(config, key, value)
-    qualifs.settings = config.qualif
-    for (const name of reload) reloads[name]()
-    push()
-  },
-
-  async chooseDevDir() {
-    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-      title: 'Folder that holds your repositories',
-      defaultPath: config.devDir,
-      properties: ['openDirectory']
-    })
-    if (canceled || !filePaths.length) return
-    config.devDir = filePaths[0]
-    repoList = null
-    const shown = configModule.tilde(config.devDir)
-    configModule.save({ devDir: shown })
-    push()
-    const count = repos().length
-    return count ? `Found ${count} ${count === 1 ? 'repository' : 'repositories'} in ${shown}` : `No repository in ${shown}`
-  },
-
-  async claudeOpen({ key, fresh }) {
-    data.past = claude.past()
-    const view = ticketView(key)
-    const id = `ticket:${key}`
-    const embedded = terminals.get(id)
-    if (embedded && !embedded.exited && !fresh) return { view: id }
-    if (view.session && !view.session.embedded && !fresh) return actions.focusSession({ id: view.session.id })
-    if (embedded) terminals.close(id, { keepChildren: true })
-    const resume = !fresh && view.previous
-    terminals.spawn(id, {
-      role: 'ticket',
-      key,
-      label: view.summary,
-      cwd: resume ? launch.directoryFor(config, null, view.previous.cwd) : config.repoDir,
-      args: resume ? ['--resume', view.previous.id] : [configModule.fill(config.startPrompt, { key })]
-    })
-    return { view: id }
-  },
-
-  async focusSession({ id }) {
-    const session = data.live.find(s => s.id === id)
-    const embedded = session && terminals.list().find(t => t.pid === session.pid && !t.exited)
-    if (embedded) return { view: embedded.id }
-    if (!wm.desktop) throw new Error(`This session runs in ${config.terminal.name}, and Atelier cannot switch windows on this desktop`)
-    if (await claude.focus(config, id)) return `Switched to the session in ${config.terminal.name}`
-    throw new Error('Its terminal window was not found')
-  },
-
-  async rebase({ key }) {
-    const view = ticketView(key)
-    const pr = view.rebasable
-    if (!pr) throw new Error(`${key} has no open pull request in ${config.repoName}`)
-    const id = `rebase:${key}`
-    if (terminals.alive(id)) return { view: id }
-    const spawnClaude = context => terminals.spawn(id, {
-      role: 'rebase',
-      key,
-      prNumber: pr.number,
-      label: `Rebase of #${pr.number} onto ${pr.base}`,
-      cwd: context.dir,
-      args: [rebase.prompt(key, pr, context, { withSapling: data.sapling, repoDir: config.repoDir })]
-    })
-    const waiting = await rebase.resume(pr)
-    if (waiting) {
-      spawnClaude(waiting)
-      return { view: id, message: `The rebase of #${pr.number} was still waiting on conflicts, Claude picks it up` }
-    }
-    const result = await rebase.start(config.repoDir, pr)
-    if (result.status === 'current') return `#${pr.number} already sits on top of origin/${pr.base}`
-    if (result.status === 'pushed') {
-      loaders.github()
-      return `Rebased #${pr.number} onto origin/${pr.base} and force-pushed it. ${data.sapling ? 'Your local Sapling commit' : `Your local ${pr.branch} branch, if you have one,`} is now the old version`
-    }
-    spawnClaude(result)
-    return { view: id, message: `#${pr.number} conflicts with origin/${pr.base} in ${result.files.length} file${result.files.length > 1 ? 's' : ''}, Claude resolves it` }
-  },
-
-  reviewWithClaude({ id }) {
-    const pr = data.github?.reviews.find(p => p.id === id) || data.github?.mine.find(p => p.id === id)
-    if (!pr) throw new Error('That pull request is no longer listed')
-    const termId = `review:${pr.id}`
-    if (terminals.alive(termId)) return { view: termId }
-    terminals.spawn(termId, {
-      role: 'review',
-      prId: pr.id,
-      prNumber: pr.number,
-      title: pr.title,
-      repo: pr.repo,
-      label: `Review of ${pr.repo}#${pr.number}: ${pr.title}`,
-      cwd: launch.directoryFor(config, pr.repo),
-      args: [configModule.fill(config.reviewPrompt, { number: pr.number })]
-    })
-    return { view: termId }
-  },
-
-  claudeRepo({ name }) {
-    const repo = repoNamed(name)
-    const id = terminals.nextId(`repo:${repo.name}:`)
-    terminals.spawn(id, { role: 'repo', repo: repo.name, label: `Claude in ${repo.name}`, cwd: repo.dir })
-    return { view: id }
-  },
-
-  shellRepo({ name }) {
-    const repo = repoNamed(name)
-    const id = terminals.nextId(`term:${repo.name}:`)
-    terminals.spawn(id, { role: 'repo', repo: repo.name, label: `Terminal in ${repo.name}`, cwd: repo.dir, kind: 'terminal' })
-    return { view: id }
-  },
-
-  async slWeb({ name }) {
-    if (!(await sapling.available())) throw new Error('Sapling is not installed, so sl web is not available')
-    const repo = repoNamed(name)
-    const server = JSON.parse(await run('sl', ['web', '--no-open', '--json'], { cwd: repo.dir, timeout: 30000 }))
-    const url = new URL(server.url)
-    if (url.protocol !== 'http:' || url.hostname !== 'localhost') throw new Error(`Sapling Web answered on ${url.origin}, not on localhost`)
-    return { web: { url: server.url, repo: repo.name } }
-  },
-
-  editorRepo({ name }) {
-    const repo = repoNamed(name)
-    if (editorWindow()) return launch.editorWindow(config.editor, repo.dir)
-    return { view: openEditorView(repo) }
-  },
-
-
-  workflowRun({ id }) {
-    const workflow = config.workflows.find(w => w.id === id)
-    if (!workflow) throw new Error(`No workflow ${id} in config.json`)
-    const live = runs.live(workflow.id)
-    if (live) return { view: live.terminal, message: `${workflow.label} is already running` }
-    const run = runs.create(workflow)
-    spawnRun(run, ['--session-id', run.session, workflow.prompt])
-    return { view: run.terminal }
-  },
-
-  runResume({ id }) {
-    const run = runs.get(id)
-    if (!run.session) throw new Error('This run started before Atelier recorded its Claude session')
-    if (terminals.alive(run.terminal, { keepChildren: true })) return { view: run.terminal }
-    runs.resumed(run.id)
-    spawnRun(run, ['--resume', run.session])
-    return { view: run.terminal }
-  },
-
-  runAnswer({ id, option }) {
-    const run = runs.get(id)
-    if (!run.question?.options.includes(option)) throw new Error('That question was already answered')
-    const terminal = terminals.get(run.terminal)
-    if (!terminal || terminal.exited) throw new Error('The run session has ended')
-    runs.answered(id, run.question.asked)
-    terminals.write(run.terminal, option)
-    setTimeout(() => terminals.write(run.terminal, '\r'), 150)
-    return `Answered "${option}"`
-  },
-
-  runDismiss({ id }) {
-    const run = runs.get(id)
-    if (terminals.get(run.terminal)?.exited) terminals.close(run.terminal)
-    runs.dismiss(id)
-  },
-
-  async take({ key }) {
-    const item = data.unassigned?.find(t => t.key === key)
-    if (!item) throw new Error(`${key} is no longer unassigned`)
-    const column = data.columns?.[inProgressStation(data.columns)]
-    if (!column) throw new Error('The board has no In progress column')
-    await jira.assignToMe(key)
-    let status
-    try {
-      status = await jira.moveTo(key, column.statusIds)
-    } catch (error) {
-      await loaders.jira([item.id])
-      throw new Error(`Assigned ${key} to you, but could not move it: ${error.message}`)
-    }
-    await loaders.jira([item.id])
-    return `Assigned ${key} to you and moved it to ${status}`
-  },
-
-  closeTerminal({ id }) {
-    terminals.close(id)
-    push()
-  },
-
-  splitShell({ parent }) {
-    return { pane: terminals.spawnShell(parent).id }
-  },
-
-  openEditor({ parent }) {
-    if (!editorWindow()) return { pane: terminals.spawnEditor(parent).id }
-    const owner = terminals.get(parent)
-    if (!owner) throw new Error('That session is gone')
-    return launch.editorWindow(config.editor, owner.cwd)
-  },
-
-  async move({ key, station }) {
-    const column = data.columns?.[station]
-    if (!column || !ticket(key)) throw new Error('Unknown ticket or column')
-    const status = await jira.moveTo(key, column.statusIds)
-    await loaders.jira([ticket(key).id])
-    return `Moved ${key} to ${status}`
-  },
-
-  async flag({ key, blocked }) {
-    await jira.setBlocked(key, blocked)
-    const item = ticket(key)
-    if (item) item.blocked = blocked
-    push()
-    loaders.jira(item ? [item.id] : [])
-    return blocked ? `Flagged ${key} as blocked` : `Removed the blocked flag from ${key}`
-  },
-
-  timerStart({ key }) {
-    timer.start(key)
-    push()
-  },
-
-  timerStop() {
-    timer.stop()
-    push()
-  },
-
-  timerDiscard({ key }) {
-    timer.clear(key)
-    push()
-    return `Discarded the unlogged time on ${key}`
-  },
-
-  qualifAdd({ number }) {
-    qualifs.add(number)
-    loaders.deploys()
-  },
-
-  qualifRemove({ number }) {
-    qualifs.remove(number)
-    return `Removed ${config.qualif.label} ${number} from Atelier. Its branch and deployment are not touched`
-  },
-
-  qualifAssign({ number, key }) {
-    if (!ticket(key)) throw new Error(`${key} is not in your list`)
-    qualifs.assign(number, key)
-  },
-
-  qualifUnassign({ number, key }) {
-    qualifs.unassign(number, key)
-  },
-
-  async qualifSync({ number, deploy }) {
-    const settings = config.qualif
-    const name = `${settings?.label} ${number}`
-    qualifs.get(number)
-    await loaders.github()
-    if (data.errors.github) throw new Error(`GitHub did not answer (${data.errors.github}), try again`)
-    const n = Number(number)
-    const plan = qualifPlan(settings, qualifs.get(number), { tickets: tickets(), prs: data.github.mine, repo: config.repoName, login: data.github.viewer })
-    const { missing, rows } = plan
-    if (missing.length) throw new Error(`${missing.join(', ')} ${missing.length > 1 ? 'have' : 'has'} no open pull request in ${config.repoName}. Remove ${missing.length > 1 ? 'them' : 'it'} or open the PR first`)
-    if (deploy && !settings.workflow) throw new Error(`No deploy workflow is set up for ${settings.label.toLowerCase()}s in config.json`)
-    const args = [
-      String(n), ...plan.toSync.map(pr => String(pr.number)),
-      '--base', settings.base, '--branch', plan.qualifBranch || settings.branch, '--max', String(settings.count),
-      ...(settings.workflow ? ['--workflow', settings.workflow, ...Object.entries(settings.inputs).flatMap(([key, value]) => ['-f', `${key}=${configModule.fill(value, { n })}`])] : []),
-      ...(plan.direct ? ['--direct'] : []),
-      deploy ? '--deploy' : '--dry-run'
-    ]
-    const run = await qualifs.sync(number, {
-      bin: config.qualifSyncBin,
-      cwd: config.repoDir,
-      args,
-      prs: plan.toSync,
-      branch: plan.branch,
-      deploy: Boolean(deploy),
-      tickets: plan.keys
-    })
-    if (!run.ok) throw new Error(`qualif-sync failed on ${name}, see its output`)
-    if (!deploy) return `Dry run done for ${name}, nothing pushed or deployed`
-    setTimeout(() => loaders.deploys(), 5000)
-    const stale = settings.jiraField ? rows.filter(row => row.prs.length && row.jiraQualif !== n).map(row => row.key) : []
-    const refused = new Map()
-    for (const key of stale) await jira.setQualif(key, n).catch(error => refused.set(key, error.message))
-    if (stale.length) loaders.jira()
-    const updated = stale.filter(key => !refused.has(key))
-    return [
-      plan.direct ? `Started the deployment of ${plan.branch} to ${name}` : `Pushed ${plan.branch} and started the deployment to ${name}`,
-      updated.length ? `set ${name} in Jira on ${updated.join(', ')}` : '',
-      refused.size ? `Jira refused ${[...refused].map(([key, why]) => `${key} (${why})`).join(', ')}` : ''
-    ].filter(Boolean).join('; ')
-  },
-
-  async qualifCacheClear({ number }) {
-    const name = `${config.qualif?.label} ${number}`
-    const run = await qualifs.clearCache(number, { cwd: config.repoDir })
-    if (run.ok) return `Cleared the cache of ${name}`
-    if (/gcloud/i.test(run.output) && /credentials|refresh token|reauth|Unauthorized/i.test(run.output)) throw new Error('gcloud could not sign in. Run gcloud auth login in a terminal, then try again')
-    throw new Error(`Clearing the cache of ${name} failed, see its output`)
-  },
-
-  async logDelete({ key, id }) {
-    if (!/^\d+$/.test(String(id))) throw new Error('Unknown time entry')
-    await jira.deleteLog(key, id)
-    refreshBar()
-    loaders.time()
-    loaders.jira()
-    return `Deleted a time entry on ${key}`
-  },
-
-  async logUpdate({ key, id, seconds }) {
-    if (!Number.isFinite(seconds) || seconds < 60 || seconds > 86400) throw new Error('Enter a duration between 1 minute and 24 hours')
-    if (!/^\d+$/.test(String(id))) throw new Error('Unknown time entry')
-    await jira.updateLog(key, id, seconds)
-    refreshBar()
-    loaders.time()
-    loaders.jira()
-    return `Changed the time on ${key}`
-  },
-
-  async log({ key, seconds, date }) {
-    if (!Number.isFinite(seconds) || seconds < 60 || seconds > 86400) throw new Error('Enter a duration between 1 minute and 24 hours')
-    if (date) {
-      const parsed = new Date(`${date}T12:00:00`)
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsed.getTime())) throw new Error('Pick a valid day')
-      if (date > new Date().toLocaleDateString('sv')) throw new Error('Pick today or an earlier day')
-    }
-    await jira.log(key, seconds, date)
-    // A manual entry leaves the timer's unlogged time alone
-    if (!date) timer.clear(key)
-    push()
-    refreshBar()
-    loaders.time()
-    loaders.jira()
-    const h = Math.floor(seconds / 3600)
-    const m = Math.round((seconds % 3600) / 60)
-    return `Logged ${h ? `${h}h` : ''}${String(m).padStart(h ? 2 : 1, '0')}${h ? '' : 'm'} on ${key}`
-  }
+  ...require('./actions/settings')(ctx),
+  ...require('./actions/sessions')(ctx),
+  ...require('./actions/runs')(ctx),
+  ...require('./actions/tickets')(ctx),
+  ...require('./actions/qualifs')(ctx)
 }
 
 ipcMain.handle('action', async (_event, name, payload = {}) => {
