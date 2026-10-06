@@ -557,11 +557,13 @@ button {
 .panes:not([data-tab="mine"]) #mine,
 .pane.filter:not(.current),
 .panes:not([data-tab="unassigned"]) #unassigned,
+.panes:not([data-tab="time"]) #time,
+.panes[data-tab="time"] #reviews,
 .panes:not([data-tab="qualifs"]) #qualifs,
 .panes:not([data-tab="settings"]) #settings,
 .panes[data-tab="settings"] #reviews { display: none; }
 
-#settings { grid-column: 1 / -1; }
+#settings, #time { grid-column: 1 / -1; }
 
 .subtabs {
   display: flex;
@@ -935,8 +937,26 @@ button {
 
 .confirm input:focus { outline: 2px solid var(--cyan); outline-offset: 0; border-color: transparent; }
 
+.confirm input.date { width: auto; font-variation-settings: normal; }
+
+.play.add-time { color: var(--comment); }
+.play.add-time:hover { color: var(--fg); }
+.play.delete-time { color: var(--comment); }
+.play.delete-time:hover { color: var(--red); }
+
 .confirm .hint { color: var(--comment); font-size: var(--step--1); }
 .confirm .invalid { color: var(--red); font-size: var(--step--1); }
+
+/* My time entry */
+
+.time-entry { display: grid; gap: 8px; padding: 10px var(--gutter); }
+.time-entry + .time-entry { border-top: 1px solid var(--line); }
+.time-entry .head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.time-entry .key { color: var(--cyan); flex: none; }
+.time-entry .key:hover { text-decoration: underline; text-underline-offset: 3px; }
+.time-entry .at { color: var(--comment); font-size: var(--step--1); flex: none; }
+.time-entry .summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.time-entry .spent { flex: none; color: var(--bright); }
 
 /* Compact rows: loose PRs and sessions */
 

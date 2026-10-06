@@ -260,7 +260,13 @@ class Jira {
     const today = data.today
     const byTicket = {}
     for (const ticket of data.tickets) byTicket[ticket.key] = { today: ticket.days[today] || 0, week: ticket.total }
+    const entries = data.tickets
+      .flatMap(ticket => ticket.worklogs
+        .filter(entry => entry.date === today)
+        .map(entry => ({ ...entry, key: ticket.key, summary: ticket.summary, url: ticket.url })))
+      .sort((a, b) => a.time.localeCompare(b.time))
     return {
+      entries,
       today: data.days.find(day => day.date === today)?.total || 0,
       week: data.total,
       dailyTarget: data.dailyTarget,
@@ -269,11 +275,36 @@ class Jira {
     }
   }
 
-  async log(key, seconds) {
+  async deleteLog(key, id) {
+    let output
+    try {
+      output = await this.jiraTime(['delete', key, String(id)])
+    } catch (error) {
+      output = error.stdout
+    }
+    const data = JSON.parse(output || '{}')
+    if (!data.ok) throw new Error(data.error || `Could not delete the time on ${key}`)
+    return data
+  }
+
+  async updateLog(key, id, seconds) {
     const minutes = Math.max(1, Math.round(seconds / 60))
     let output
     try {
-      output = await this.jiraTime(['log', key, `${minutes}m`])
+      output = await this.jiraTime(['update', key, String(id), `${minutes}m`])
+    } catch (error) {
+      output = error.stdout
+    }
+    const data = JSON.parse(output || '{}')
+    if (!data.ok) throw new Error(data.error || `Could not change the time on ${key}`)
+    return data
+  }
+
+  async log(key, seconds, date) {
+    const minutes = Math.max(1, Math.round(seconds / 60))
+    let output
+    try {
+      output = await this.jiraTime(['log', key, `${minutes}m`, ...(date ? [date] : [])])
     } catch (error) {
       output = error.stdout
     }

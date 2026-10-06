@@ -7,6 +7,8 @@
                                  --cached : derniere version en cache, sans appel reseau
   jira-time log <TICKET> <duree> [AAAA-MM-JJ]
                                  ajoute un worklog (duree : 1,5h  1h30  90m  2)
+  jira-time update <TICKET> <ID> <duree>
+                                 change la duree du worklog <ID> du ticket
   jira-time delete <TICKET> <ID>
                                  supprime le worklog <ID> du ticket
 
@@ -254,6 +256,20 @@ def cmd_log(args):
     print(json.dumps({"ok": True, "key": key, "seconds": seconds, "date": day.isoformat()}))
 
 
+def cmd_update(args):
+    if len(args) < 3:
+        raise JiraError("Usage : jira-time update <TICKET> <ID> <durée>")
+    key = args[0].strip().upper()
+    if not re.fullmatch(r"[A-Z][A-Z0-9]+-\d+", key):
+        raise JiraError(f"Ticket invalide : {args[0]}")
+    if not re.fullmatch(r"\d+", args[1]):
+        raise JiraError(f"Identifiant de worklog invalide : {args[1]}")
+    seconds = parse_duration(args[2])
+    request("PUT", f"/rest/api/3/issue/{key}/worklog/{args[1]}", {"notifyUsers": "false"}, {"timeSpentSeconds": seconds})
+    os.system(f"pkill -RTMIN+{WAYBAR_SIGNAL} -x waybar >/dev/null 2>&1")
+    print(json.dumps({"ok": True, "key": key, "id": args[1], "seconds": seconds}))
+
+
 def cmd_delete(args):
     if len(args) < 2:
         raise JiraError("Usage : jira-time delete <TICKET> <ID>")
@@ -269,7 +285,7 @@ def cmd_delete(args):
 
 def main():
     cmd, args = (sys.argv[1], sys.argv[2:]) if len(sys.argv) > 1 else ("bar", [])
-    handlers = {"bar": cmd_bar, "week": cmd_week, "log": cmd_log, "delete": cmd_delete}
+    handlers = {"bar": cmd_bar, "week": cmd_week, "log": cmd_log, "update": cmd_update, "delete": cmd_delete}
     if cmd not in handlers:
         print(__doc__, file=sys.stderr)
         sys.exit(2)

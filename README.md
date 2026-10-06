@@ -8,7 +8,7 @@ It is built for one setup (Linux with Hyprland, Ghostty and Sapling) and is not 
 
 ## What it does
 
-- **Tickets**: my Jira tickets, sorted by the columns of a board, with tabs for the columns you pick (MEPP and MEP for me) and the unassigned tickets. Move a ticket between columns, flag it, take an unassigned one, log time against it with a timer.
+- **Tickets**: my Jira tickets, sorted by the columns of a board, with tabs for the columns you pick (MEPP and MEP for me) and the unassigned tickets. Move a ticket between columns, flag it, take an unassigned one, log time against it with a timer, or add time by hand for a day you pick (`1h`, `1.5h`, `15m`, `1h 30m`). **My time entry** lists today's worklogs in chronological order, each with an **Edit** and an **Add time** button.
 - **Claude sessions**: start or resume a Claude Code session on a ticket in an embedded terminal. Sessions already running in another terminal are shown too, and on Hyprland or Sway Atelier switches to their window.
 - **Splits**: Ghostty-style panes inside a session. **Open nvim** puts nvim, or the [editor](#editor) you set, on the left of Claude, and extra shells split beside it. A pane closes when its program exits.
 - **PRs and reviews**: GitHub PRs and their checks, rebase a ticket's PR, start a Claude review of a PR.

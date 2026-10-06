@@ -32,6 +32,9 @@ const G = {
   folder: svg('<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>'),
   settings: svg('<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>'),
   workflow: svg('<rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/>'),
+  clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  edit: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
+  trash: svg('<path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'),
   eye: svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>')
 }
 
@@ -117,6 +120,10 @@ function parseDuration(text) {
     return Math.round(n <= 12 ? n * 3600 : n * 60)
   }
   return NaN
+}
+
+function localDay(date = new Date()) {
+  return date.toLocaleDateString('sv')
 }
 
 function roundedForLog(seconds) {
@@ -265,7 +272,78 @@ function timeCell(ticket) {
     ${running
       ? `<button class="play running" data-act="timer-stop" title="Stop the timer"><span class="glyph">${G.stop}</span><span class="code" data-since="${t.runningSince}">${clockText(Date.now() - t.runningSince + t.unlogged * 1000)}</span></button>`
       : `<button class="play" data-act="timer-start" data-key="${esc(ticket.key)}" title="Start a timer on ${esc(ticket.key)}"><span class="glyph">${G.play}</span>${t.unlogged ? `<span class="code unlogged">${duration(t.unlogged)}</span>` : '<span class="t">Track</span>'}</button>`}
+    <button class="play add-time" data-act="ask-manual-time" data-key="${esc(ticket.key)}" title="Log time on ${esc(ticket.key)} by hand" aria-label="Log time on ${esc(ticket.key)} by hand"><span class="glyph">${G.plus}</span><span class="t">Add time</span></button>
   </div>`
+}
+
+function manualForm(key, scope = '') {
+  const draft = ui.drafts[`manual:${key}`] ?? ''
+  const parsed = parseDuration(draft)
+  const valid = parsed >= 60 && parsed <= 86400
+  const busy = ui.busy.has(`log:${key}`)
+  const id = `manual${scope ? `-${scope}` : ''}-${esc(key)}`
+  return `<form class="confirm" data-form="manual-log" data-key="${esc(key)}">
+    <label class="question" for="${id}">Add time on <strong class="code">${esc(key)}</strong></label>
+    <input id="${id}" data-draft="manual:${esc(key)}" value="${esc(draft)}" placeholder="1h 30m" autocomplete="off" spellcheck="false" aria-describedby="hint-${id}">
+    <input type="date" class="date" data-manual-date="${esc(key)}" value="${esc(ui.confirm.date)}" max="${localDay()}" required aria-label="Day">
+    <button class="btn primary" type="submit" ${valid && !busy ? '' : 'disabled'}>${busy ? 'Logging…' : 'Log time'}</button>
+    <button class="btn quiet" type="button" data-act="cancel">Cancel</button>
+    <span class="${!draft || valid ? 'hint' : 'invalid'}" id="hint-${id}">${valid ? `That logs ${duration(parsed)}.` : !draft ? 'Formats: 1h, 1.5h, 15m, 1h 30m' : 'Use a duration such as 1h, 1.5h, 15m or 1h 30m'}</span>
+  </form>`
+}
+
+function editForm(entry) {
+  const draft = ui.drafts[`edit:${entry.id}`] ?? duration(entry.seconds)
+  const parsed = parseDuration(draft)
+  const valid = parsed >= 60 && parsed <= 86400
+  const busy = ui.busy.has(`log:${entry.key}`)
+  const id = `edit-${esc(entry.id)}`
+  return `<form class="confirm" data-form="edit-log" data-key="${esc(entry.key)}" data-id="${esc(entry.id)}">
+    <label class="question" for="${id}">Change the time on <strong class="code">${esc(entry.key)}</strong></label>
+    <input id="${id}" data-draft="edit:${esc(entry.id)}" value="${esc(draft)}" autocomplete="off" spellcheck="false" aria-describedby="hint-${id}">
+    <button class="btn primary" type="submit" ${valid && !busy ? '' : 'disabled'}>${busy ? 'Saving…' : 'Save'}</button>
+    <button class="btn quiet" type="button" data-act="cancel">Cancel</button>
+    <span class="${valid ? 'hint' : 'invalid'}" id="hint-${id}">${valid ? `That makes ${duration(parsed)}.` : 'Use a duration such as 1h, 1.5h, 15m or 1h 30m'}</span>
+  </form>`
+}
+
+function deleteConfirm(entry) {
+  const busy = ui.busy.has(`log:${entry.key}`)
+  return `<div class="confirm">
+    <span class="question">Delete the <strong class="code">${duration(entry.seconds)}</strong> logged on <strong class="code">${esc(entry.key)}</strong> at ${esc(entry.time)}? This removes it from Jira.</span>
+    <button class="btn primary" data-act="delete-time" data-id="${esc(entry.id)}" data-key="${esc(entry.key)}" ${busy ? 'disabled' : ''}>${busy ? 'Deleting…' : 'Delete'}</button>
+    <button class="btn quiet" data-act="cancel">Cancel</button>
+  </div>`
+}
+
+function renderTime(state) {
+  const time = state.time
+  const entries = time?.entries || []
+  const parts = [`<h2 id="time-title">My time entry <span class="count">${entries.length || ''}</span></h2>`]
+  if (state.errors.time) parts.push(`<p class="notice">Jira did not answer: ${esc(state.errors.time)}. Refresh once it is back.</p>`)
+  if (!entries.length) {
+    parts.push(`<p class="empty">${state.loading.time && !time ? 'Loading your time entries…' : 'Nothing logged today yet.'}</p>`)
+  } else {
+    parts.push(`<p class="repos"><span class="code">${duration(time.today)}</span> logged today, oldest first</p>`)
+    parts.push(entries.map(entry => {
+      const editing = ui.confirm?.type === 'edit-time' && ui.confirm.id === entry.id
+      const adding = ui.confirm?.type === 'manual-time' && ui.confirm.scope === 'time' && ui.confirm.key === entry.key && ui.confirm.entry === entry.id
+      const deleting = ui.confirm?.type === 'delete-time' && ui.confirm.id === entry.id
+      return `<article class="time-entry" data-entry="${esc(entry.id)}">
+        <div class="head">
+          <span class="at code">${esc(entry.time)}</span>
+          <button class="key code" data-act="open-url" data-url="${esc(entry.url)}" title="Open ${esc(entry.key)} in Jira">${esc(entry.key)}</button>
+          <span class="summary" title="${esc(entry.summary)}">${esc(entry.summary)}</span>
+          <span class="spent code">${duration(entry.seconds)}</span>
+          <button class="play" data-act="ask-edit-time" data-id="${esc(entry.id)}" data-key="${esc(entry.key)}" title="Change this time entry" aria-label="Change the time entry of ${esc(entry.key)}"><span class="glyph">${G.edit}</span><span class="t">Edit</span></button>
+          <button class="play add-time" data-act="ask-manual-time" data-scope="time" data-entry="${esc(entry.id)}" data-key="${esc(entry.key)}" title="Add time on ${esc(entry.key)}" aria-label="Add time on ${esc(entry.key)}"><span class="glyph">${G.plus}</span><span class="t">Add time</span></button>
+          <button class="play delete-time" data-act="ask-delete-time" data-id="${esc(entry.id)}" data-key="${esc(entry.key)}" title="Delete this time entry" aria-label="Delete the time entry of ${esc(entry.key)}"><span class="glyph">${G.trash}</span><span class="t">Delete</span></button>
+        </div>
+        ${editing ? editForm(entry) : adding ? manualForm(entry.key, 'time') : deleting ? deleteConfirm(entry) : ''}
+      </article>`
+    }).join(''))
+  }
+  $('time').innerHTML = parts.join('')
 }
 
 function rebaseChip(ticket) {
@@ -302,6 +380,7 @@ function confirmRow(ticket, columns) {
       <button class="btn quiet" data-act="cancel">Cancel</button>
     </div>`
   }
+  if (ui.confirm?.type === 'manual-time' && ui.confirm.key === ticket.key && !ui.confirm.scope) return manualForm(ticket.key)
   const t = ticket.time
   if (t.unlogged > 0 && !t.runningSince) {
     const draft = ui.drafts[ticket.key] ?? duration(roundedForLog(t.unlogged))
@@ -630,6 +709,7 @@ function renderLaunch(state) {
 }
 
 const navItems = state => [
+  { tab: 'time', label: 'My time entry', glyph: 'clock' },
   { tab: 'mine', label: 'My tickets', glyph: 'list' },
   ...(state?.filters || []).map(filter => ({ tab: filter.id, label: filter.label, glyph: G[filter.icon] ? filter.icon : 'filter', sub: true })),
   ...(state && !state.jira.unassignedColumns.length ? [] : [{ tab: 'unassigned', label: 'Unassigned', glyph: 'userPlus', sub: true }]),
@@ -644,6 +724,7 @@ function navCount(state, tab) {
   if (tab === 'qualifs') return state.qualifs?.items.length || 0
   if (tab === 'reviews') return state.reviews.filter(pr => pr.group === 'waiting' && !ui.hiddenRepos.has(pr.repo)).length
   if (tab === 'settings') return 0
+  if (tab === 'time') return state.time?.entries?.length || 0
   return ticketsIn(state, tab).length
 }
 
@@ -1038,7 +1119,7 @@ function render() {
   const focusKey = active?.dataset?.draft ? `[data-draft="${active.dataset.draft}"]` : null
   const selection = focusKey ? [active.selectionStart, active.selectionEnd] : null
   syncFilterPanes(state)
-  const panes = ['mine', ...state.filters.map(f => f.id), 'unassigned', 'qualifs', 'reviews']
+  const panes = ['mine', ...state.filters.map(f => f.id), 'unassigned', 'time', 'qualifs', 'reviews']
   const scroll = Object.fromEntries(panes.map(id => [id, $(id).scrollTop]))
 
   renderToday(state)
@@ -1047,6 +1128,7 @@ function render() {
   renderMine(state)
   for (const filter of state.filters) renderStage(state, filter.id, filter.label)
   renderUnassigned(state)
+  renderTime(state)
   if (!(active?.tagName === 'SELECT' && active.closest('#qualifs'))) renderQualifs(state)
   renderReviews(state)
   if (!(active?.matches('input:not([type="checkbox"]), select, textarea') && $('settings').contains(active))) renderSettings(state)
@@ -1192,6 +1274,29 @@ const handlers = {
     render()
     ;[...document.querySelectorAll(`[data-ticket="${el.dataset.key}"] [data-act="move"]`)].find(b => b.offsetParent !== null)?.focus()
   },
+  'ask-manual-time': el => {
+    const key = el.dataset.key
+    ui.confirm = { type: 'manual-time', key, date: localDay(), scope: el.dataset.scope, entry: el.dataset.entry }
+    render()
+    ;[...document.querySelectorAll(`[data-draft="manual:${key}"]`)].find(i => i.offsetParent !== null)?.focus()
+  },
+  'ask-delete-time': el => {
+    ui.confirm = { type: 'delete-time', key: el.dataset.key, id: el.dataset.id }
+    render()
+    document.querySelector(`[data-act="delete-time"][data-id="${el.dataset.id}"]`)?.focus()
+  },
+  async 'delete-time'(el) {
+    const { key, id } = el.dataset
+    if (ui.confirm?.type !== 'delete-time' || ui.confirm.id !== id) return
+    const result = await act('logDelete', { key, id }, `log:${key}`)
+    if (result?.ok) ui.confirm = null
+    render()
+  },
+  'ask-edit-time': el => {
+    ui.confirm = { type: 'edit-time', key: el.dataset.key, id: el.dataset.id }
+    render()
+    ;[...document.querySelectorAll(`[data-draft="edit:${el.dataset.id}"]`)].find(i => i.offsetParent !== null)?.focus()
+  },
   cancel: () => {
     ui.confirm = null
     render()
@@ -1294,6 +1399,10 @@ document.addEventListener('click', event => {
 })
 
 document.addEventListener('change', event => {
+  if (event.target.dataset?.manualDate && ui.confirm?.type === 'manual-time') {
+    ui.confirm.date = event.target.value
+    return
+  }
   if (event.target.dataset?.pick === 'review-repo') {
     const hidden = new Set(ui.hiddenRepos)
     if (event.target.checked) hidden.delete(event.target.dataset.repo)
@@ -1377,8 +1486,14 @@ document.addEventListener('input', event => {
   const valid = parsed >= 60 && parsed <= 86400
   form.querySelector('[type="submit"]').disabled = !valid
   const hint = form.querySelector('.hint, .invalid')
-  hint.className = valid ? 'hint' : 'invalid'
-  hint.textContent = valid ? `That logs ${duration(parsed)}.` : 'Use a duration such as 1h15, 45m or 1.5'
+  const manual = form.dataset.form === 'manual-log'
+  const editing = form.dataset.form === 'edit-log'
+  const blank = manual && !event.target.value.trim()
+  hint.className = valid || blank ? 'hint' : 'invalid'
+  hint.textContent = valid ? `That logs ${duration(parsed)}.`
+    : blank ? 'Formats: 1h, 1.5h, 15m, 1h 30m'
+    : manual || editing ? 'Use a duration such as 1h, 1.5h, 15m or 1h 30m'
+    : 'Use a duration such as 1h15, 45m or 1.5'
 })
 
 document.addEventListener('submit', async event => {
@@ -1391,6 +1506,35 @@ document.addEventListener('submit', async event => {
     if (result?.ok) {
       ui.jiraDraft = {}
       renderSettings(ui.state)
+    }
+    return
+  }
+  const edit = event.target.closest('[data-form="edit-log"]')
+  if (edit) {
+    event.preventDefault()
+    const { key, id } = edit.dataset
+    const seconds = parseDuration(ui.drafts[`edit:${id}`] ?? '')
+    if (!(seconds >= 60 && seconds <= 86400)) return
+    const result = await act('logUpdate', { key, id, seconds }, `log:${key}`)
+    if (result?.ok) {
+      delete ui.drafts[`edit:${id}`]
+      ui.confirm = null
+      render()
+    }
+    return
+  }
+  const manual = event.target.closest('[data-form="manual-log"]')
+  if (manual) {
+    event.preventDefault()
+    const key = manual.dataset.key
+    const seconds = parseDuration(ui.drafts[`manual:${key}`] ?? '')
+    const date = ui.confirm?.type === 'manual-time' ? ui.confirm.date : ''
+    if (!date || !(seconds >= 60 && seconds <= 86400)) return
+    const result = await act('log', { key, seconds, date }, `log:${key}`)
+    if (result?.ok) {
+      delete ui.drafts[`manual:${key}`]
+      ui.confirm = null
+      render()
     }
     return
   }

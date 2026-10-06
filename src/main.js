@@ -635,10 +635,35 @@ const actions = {
     throw new Error(`Clearing the cache of ${name} failed, see its output`)
   },
 
-  async log({ key, seconds }) {
+  async logDelete({ key, id }) {
+    if (!/^\d+$/.test(String(id))) throw new Error('Unknown time entry')
+    await jira.deleteLog(key, id)
+    refreshBar()
+    loaders.time()
+    loaders.jira()
+    return `Deleted a time entry on ${key}`
+  },
+
+  async logUpdate({ key, id, seconds }) {
     if (!Number.isFinite(seconds) || seconds < 60 || seconds > 86400) throw new Error('Enter a duration between 1 minute and 24 hours')
-    await jira.log(key, seconds)
-    timer.clear(key)
+    if (!/^\d+$/.test(String(id))) throw new Error('Unknown time entry')
+    await jira.updateLog(key, id, seconds)
+    refreshBar()
+    loaders.time()
+    loaders.jira()
+    return `Changed the time on ${key}`
+  },
+
+  async log({ key, seconds, date }) {
+    if (!Number.isFinite(seconds) || seconds < 60 || seconds > 86400) throw new Error('Enter a duration between 1 minute and 24 hours')
+    if (date) {
+      const parsed = new Date(`${date}T12:00:00`)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsed.getTime())) throw new Error('Pick a valid day')
+      if (date > new Date().toLocaleDateString('sv')) throw new Error('Pick today or an earlier day')
+    }
+    await jira.log(key, seconds, date)
+    // A manual entry leaves the timer's unlogged time alone
+    if (!date) timer.clear(key)
     push()
     refreshBar()
     loaders.time()
