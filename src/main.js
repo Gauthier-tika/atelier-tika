@@ -8,7 +8,7 @@ const claude = require('./claude')
 const launch = require('./launch')
 const wm = require('./wm')
 const { Timer } = require('./timer')
-const { compose, qualifPrs, qualifBranch } = require('./compose')
+const { compose, qualifPrs, deploysPrBranch, deployTarget, syncedBranch } = require('./compose')
 const { Qualifs } = require('./qualifs')
 const { run, onPath, env } = require('./run')
 const rebase = require('./rebase')
@@ -119,7 +119,7 @@ function parseInputs(text) {
 
 const current = () => ({ ...compose({ ...data, qualifs: qualifs.list(), runs: runs.list() }, timer.state, config, terminals.list()), workflows: config.workflows.map(({ id, label, description }) => ({ id, label, description: description || '' })), repos: repos().map(r => r.name), sapling: data.sapling, editor: { name: config.editor.name, mode: config.editor.mode }, editors: editorChoices(), terminal: { name: config.terminal.name, switching: Boolean(wm.desktop) }, devDir: configModule.tilde(config.devDir), reposPinned: Boolean(config.repos?.length), jira: jiraSettings(), qualifSettings: qualifSettings() })
 
-const qualifBranches = () => data.github ? qualifs.list().map(q => qualifBranch(config.qualif, data.github.viewer, q.number)).filter(Boolean) : []
+const qualifBranches = () => data.github ? [...new Set(qualifs.list().map(q => syncedBranch(config.qualif, data.github.viewer, q)).filter(Boolean))] : []
 
 function push() {
   send('state', current())
@@ -594,7 +594,8 @@ const actions = {
     const rows = qualifPrs(qualifs.get(number).tickets, tickets(), data.github.mine, path.basename(config.repoDir))
     const missing = rows.filter(row => !row.prs.length && !row.merged).map(row => row.key)
     if (missing.length) throw new Error(`${missing.join(', ')} ${missing.length > 1 ? 'have' : 'has'} no open pull request in ${path.basename(config.repoDir)}. Remove ${missing.length > 1 ? 'them' : 'it'} or open the PR first`)
-    const prs = rows.flatMap(row => row.prs.map(pr => ({ number: pr.number, head: pr.head, key: row.key })))
+    const prs = rows.flatMap(row => row.prs.map(pr => ({ number: pr.number, head: pr.head, branch: pr.branch, key: row.key })))
+    const target = deployTarget(settings, data.github.viewer, Number(number), prs)
     if (deploy && !settings.workflow) throw new Error(`No deploy workflow is set up for ${settings.label.toLowerCase()}s in config.json`)
     const args = [
       String(number), ...prs.map(pr => String(pr.number)),
@@ -607,11 +608,12 @@ const actions = {
       cwd: config.repoDir,
       args,
       prs,
+      branch: target,
       deploy: Boolean(deploy),
       tickets: rows.filter(row => row.prs.length).map(row => row.key)
     })
     if (!run.ok) throw new Error(`qualif-sync failed on ${name}, see its output`)
-    if (!deploy) return `Dry run done for ${name}, nothing pushed`
+    if (!deploy) return `Dry run done for ${name}, nothing pushed or deployed`
     setTimeout(() => loaders.deploys(), 5000)
     const stale = settings.jiraField ? rows.filter(row => row.prs.length && row.jiraQualif !== Number(number)).map(row => row.key) : []
     const refused = new Map()
@@ -619,7 +621,7 @@ const actions = {
     if (stale.length) loaders.jira()
     const updated = stale.filter(key => !refused.has(key))
     return [
-      `Pushed and started the deployment to ${name}`,
+      deploysPrBranch(settings, prs) ? `Started the deployment of ${target} to ${name}` : `Pushed ${target} and started the deployment to ${name}`,
       updated.length ? `set ${name} in Jira on ${updated.join(', ')}` : '',
       refused.size ? `Jira refused ${[...refused].map(([key, why]) => `${key} (${why})`).join(', ')}` : ''
     ].filter(Boolean).join('; ')

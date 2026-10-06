@@ -55,7 +55,7 @@ cp atelier.desktop ~/.local/share/applications/
 | `bin/claude-sessions` | Tracks running Claude sessions through Claude Code hooks, lists them and focuses their window |
 | `bin/jira-time` | Reads the week's Jira worklogs and logs time. Atelier passes it `jiraBase`, `jiraEnv` and `dailyHours` |
 | `bin/atelier-run` | Lets a workflow run report its stage, ticket, questions and outcome to Atelier |
-| `bin/qualif-sync` | Rebuilds a qualif branch from its base plus your PRs, pushes it and starts the deploy workflow. Atelier passes it the `qualif` settings |
+| `bin/qualif-sync` | Rebuilds a qualif branch from its base plus your PRs, pushes it and starts the deploy workflow, or deploys a single PR's branch directly. Atelier passes it the `qualif` settings |
 
 Atelier only sees Claude sessions once the hook is registered. Add this to `~/.claude/settings.json` for each of `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `Stop` and `StopFailure`, with the path to your clone:
 
@@ -145,6 +145,8 @@ A qualif is a test environment that gets its own branch, rebuilt from a base bra
   }
 }
 ```
+
+When a qualif holds a single pull request and a workflow is set, Atelier skips the qualif branch: the workflow runs on that pull request's own branch, as it is, and qualif-sync warns when that branch is behind the base.
 
 `{n}` becomes the qualif number and `{login}` your GitHub login. Every key is optional:
 

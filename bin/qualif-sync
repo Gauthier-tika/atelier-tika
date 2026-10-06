@@ -11,6 +11,9 @@ PR and push it; --deploy then runs the deploy workflow on it. Each qualif has
 its own branch, so its image tag is not shared with another qualif. The PR
 commits, their branches and the working copy are not touched.
 
+With a single PR and a workflow, nothing is rebuilt or pushed: the workflow
+runs on the PR's own branch, as it is.
+
 It also reports the PRs that change the same files (re-check them together
 when one of them leaves qualif) and the PRs that do not apply alone on the base.
 
@@ -60,6 +63,18 @@ done
 ((dry_run && deploy)) && die "--dry-run and --deploy cannot be combined"
 ((deploy)) && [[ -z $workflow ]] && die "--deploy needs --workflow"
 
+run_workflow() {
+    local ref=$1 input
+    local cmd=(gh workflow run "$workflow" --ref "$ref")
+    for input in "${inputs[@]}"; do cmd+=(-f "${input//\{n\}/$qualif}"); done
+    if ((deploy)); then
+        "${cmd[@]}"
+        echo "Deployment of $ref started: gh run list --workflow $workflow --branch $ref --limit 1"
+    else
+        echo "To deploy:  ${cmd[*]}"
+    fi
+}
+
 cd "$(git rev-parse --show-toplevel)"
 branch=${branch_pattern//\{n\}/$qualif}
 [[ $branch == *"{login}"* ]] && branch=${branch//\{login\}/$(gh api user --jq .login)}
@@ -78,6 +93,29 @@ for pr in "${prs[@]}"; do
     [[ " ${excluded[*]} " == *" $pr "* ]] || selected+=("$pr")
 done
 ((${#selected[@]})) || die "no PR to deploy"
+
+if ((${#selected[@]} == 1)) && [[ -n $workflow ]]; then
+    pr=${selected[0]}
+    read -r state cross head_ref head_oid title < <(
+        gh pr view "$pr" --json state,isCrossRepository,headRefName,headRefOid,title \
+            --jq '"\(.state) \(.isCrossRepository) \(.headRefName) \(.headRefOid) \(.title)"'
+    ) || die "cannot read PR #$pr"
+    [[ $state == OPEN ]] || die "PR #$pr is $state"
+    if [[ $cross == false ]]; then
+        git cat-file -e "$head_oid^{commit}" 2>/dev/null || git fetch -q origin "$head_ref"
+        git cat-file -e "$head_oid^{commit}" 2>/dev/null || die "cannot fetch the head of PR #$pr ($head_ref)"
+        echo
+        echo "Single PR: the workflow runs on its branch as it is, $branch is not pushed."
+        echo "  #$pr  $head_ref  $title"
+        behind=$(git rev-list --count "$head_oid..origin/$base_branch")
+        ((behind)) && echo "warning: $head_ref is $behind commits behind origin/$base_branch, which this qualif will not get"
+        echo
+        ((deploy)) || echo "Dry run: nothing deployed."
+        run_workflow "$head_ref"
+        exit 0
+    fi
+    echo "PR #$pr comes from a fork, so its commits go on $branch instead"
+fi
 
 copy_commit() {
     local commit=$1 onto=$2 tree
@@ -184,12 +222,4 @@ fi
 git push -q -f origin "$tip:refs/heads/$branch"
 echo "Pushed $(git rev-parse --short "$tip") to $branch."
 
-[[ -n $workflow ]] || exit 0
-deploy_cmd=(gh workflow run "$workflow" --ref "$branch")
-for input in "${inputs[@]}"; do deploy_cmd+=(-f "${input//\{n\}/$qualif}"); done
-if ((deploy)); then
-    "${deploy_cmd[@]}"
-    echo "Deployment of $branch started: gh run list --workflow $workflow --branch $branch --limit 1"
-else
-    echo "To deploy:  ${deploy_cmd[*]}"
-fi
+if [[ -n $workflow ]]; then run_workflow "$branch"; fi

@@ -893,10 +893,10 @@ function qualifCard(state, q) {
     <div class="qualif-head">
       <h3>${q.url ? `<button data-act="open-url" data-url="${esc(q.url)}" title="Open ${esc(q.url)}">${esc(name)}</button>` : esc(name)}</h3>
       <span class="chip ${color}"><span class="label">${esc(label)}</span></span>
-      ${q.branch ? `<span class="branch code" title="Branch rebuilt by qualif-sync">${esc(q.branch)}</span>` : ''}
+      ${q.branch ? `<span class="branch code" title="${q.direct ? 'Branch of the only pull request, deployed as it is' : 'Branch rebuilt by qualif-sync'}">${esc(q.branch)}</span>` : ''}
       <span class="qualif-actions">
-        <button class="btn quiet" data-act="qualif-sync" data-number="${q.number}" ${canSync ? '' : 'disabled'} title="${esc(why || 'Build the branch locally and show it, push nothing')}">Preview</button>
-        <button class="btn primary" data-act="ask-qualif-sync" data-number="${q.number}" ${canSync ? '' : 'disabled'} title="${esc(why || (qualifs.deploys ? `Push the branch and deploy it to ${name}` : 'Push the branch'))}">${qualifs.deploys ? 'Sync and deploy' : 'Sync'}</button>
+        <button class="btn quiet" data-act="qualif-sync" data-number="${q.number}" ${canSync ? '' : 'disabled'} title="${esc(why || (q.direct ? 'Check the pull request and show what would be deployed, deploy nothing' : 'Build the branch locally and show it, push nothing'))}">Preview</button>
+        <button class="btn primary" data-act="ask-qualif-sync" data-number="${q.number}" ${canSync ? '' : 'disabled'} title="${esc(why || (q.direct ? `Deploy ${q.branch} to ${name} as it is` : qualifs.deploys ? `Push the branch and deploy it to ${name}` : 'Push the branch'))}">${qualifs.deploys ? 'Sync and deploy' : 'Sync'}</button>
         ${qualifs.cache ? `<button class="btn quiet" data-act="ask-qualif-cache" data-number="${q.number}" ${busy ? 'disabled' : ''} title="${esc(busy ? why : deployRunning ? 'A deployment is still running: clear the cache once it is done' : `Clear the cache of ${name}`)}"><span class="glyph">${G.broom}</span><span class="t">Clear the cache</span></button>` : ''}
         <button class="unassign" data-act="qualif-remove" data-number="${q.number}" title="Remove ${esc(name)} from Atelier" aria-label="Remove ${esc(name)} from Atelier" ${q.current ? 'disabled' : ''}><span class="glyph">${G.cross}</span></button>
       </span>
@@ -908,7 +908,8 @@ function qualifCard(state, q) {
       ${choices.map(c => `<option value="${esc(c.key)}">${esc(c.key)} · ${esc(c.summary)}${qualifs.jira && c.qualif ? ` (Jira: ${esc(qualifs.label)} ${c.qualif})` : ''}</option>`).join('')}
     </select>` : ''}
     ${confirming ? `<div class="confirm">
-      <span class="question">Rebuild <strong class="code">${esc(q.branch || 'the branch')}</strong> from ${esc(qualifs.base)} + ${prList}, force-push it${qualifs.deploys ? ` and deploy it to <strong>${esc(name)}</strong>` : ''}${jiraKeys.length ? `, then set ${esc(name)} in Jira on ${jiraKeys.join(', ')}` : ''}?</span>
+      <span class="question">${q.direct ? `Deploy <strong class="code">${esc(q.branch)}</strong>, the branch of ${prList}, to <strong>${esc(name)}</strong> as it is, without rebuilding a ${esc(qualifs.label.toLowerCase())} branch`
+        : `Rebuild <strong class="code">${esc(q.branch || 'the branch')}</strong> from ${esc(qualifs.base)} + ${prList}, force-push it${qualifs.deploys ? ` and deploy it to <strong>${esc(name)}</strong>` : ''}`}${jiraKeys.length ? `, then set ${esc(name)} in Jira on ${jiraKeys.join(', ')}` : ''}?</span>
       <button class="btn primary" data-act="qualif-deploy" data-number="${q.number}" ${canSync ? '' : 'disabled'}>${qualifs.deploys ? 'Sync and deploy' : 'Sync'}</button>
       <button class="btn quiet" data-act="cancel">Cancel</button>
     </div>` : ''}
@@ -938,7 +939,7 @@ function renderQualifs(state) {
       ${q.free.map(n => `<option value="${n}">${label} ${n}</option>`).join('')}
     </select>` : ''}
   </div>`]
-  parts.push(`<p class="repos">Each ${label.toLowerCase()} gets its own branch, rebuilt from ${esc(q.base)} plus the open pull requests of its tickets, in this order, by <span class="code">qualif-sync</span>.</p>`)
+  parts.push(`<p class="repos">Each ${label.toLowerCase()} gets its own branch, rebuilt from ${esc(q.base)} plus the open pull requests of its tickets, in this order, by <span class="code">qualif-sync</span>.${q.deploys ? ' One with a single pull request deploys that pull request\'s branch as it is.' : ''}</p>`)
   if (state.errors.github) parts.push(`<p class="notice">GitHub did not answer: ${esc(state.errors.github)}. The pull requests below may be out of date.</p>`)
   parts.push(q.items.length ? q.items.map(item => qualifCard(state, item)).join('') : `<p class="empty">Add the ${label.toLowerCase()}s you use, then pick the tickets that go on each one.</p>`)
   $('qualifs').innerHTML = parts.join('')

@@ -35,6 +35,9 @@ const sameSync = (a, b) =>
   a.prs.map(pr => `${pr.number}@${pr.head}`).join() === b.prs.map(pr => `${pr.number}@${pr.head}`).join()
 
 const qualifBranch = (settings, login, n) => login || !settings.branch.includes('{login}') ? fill(settings.branch, { login, n }) : null
+const deploysPrBranch = (settings, prs) => Boolean(settings.workflow) && prs.length === 1
+const deployTarget = (settings, login, n, prs) => deploysPrBranch(settings, prs) ? prs[0].branch : qualifBranch(settings, login, n)
+const syncedBranch = (settings, login, item) => item.synced?.branch || qualifBranch(settings, login, item.number)
 
 function composeQualifs(data, config) {
   const settings = config.qualif
@@ -45,17 +48,18 @@ function composeQualifs(data, config) {
   const viewer = data.github?.viewer
   const items = (data.qualifs || []).map(item => {
     const rows = qualifPrs(item.tickets, tickets, prs, repo)
-    const toSync = rows.flatMap(row => row.prs.map(pr => ({ number: pr.number, head: pr.head, key: row.key })))
+    const toSync = rows.flatMap(row => row.prs.map(pr => ({ number: pr.number, head: pr.head, branch: pr.branch, key: row.key })))
     const wanted = { tickets: rows.filter(row => row.prs.length).map(row => row.key), prs: toSync }
-    const branch = qualifBranch(settings, viewer, item.number)
+    const deployed = syncedBranch(settings, viewer, item)
     return {
       number: item.number,
       url: settings.url ? fill(settings.url, { n: item.number }) : null,
-      branch,
+      branch: deployTarget(settings, viewer, item.number, toSync),
+      direct: deploysPrBranch(settings, toSync),
       tickets: rows,
       toSync,
       synced: item.synced || null,
-      deploy: (branch && data.deploys?.[branch]) || null,
+      deploy: (deployed && data.deploys?.[deployed]) || null,
       cacheClearedAt: item.cacheClearedAt || null,
       upToDate: Boolean(item.synced && data.github && sameSync(item.synced, wanted)),
       last: item.last || null,
@@ -205,4 +209,4 @@ function compose(data, timer, config, terminals = []) {
   }
 }
 
-module.exports = { compose, qualifPrs, qualifBranch, keysOf }
+module.exports = { compose, qualifPrs, deploysPrBranch, deployTarget, syncedBranch, keysOf }

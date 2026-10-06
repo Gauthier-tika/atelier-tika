@@ -75,14 +75,14 @@ class Qualifs {
     this.onChange()
   }
 
-  sync(number, { bin, cwd, args, prs, deploy, tickets }) {
+  sync(number, { bin, cwd, args, prs, branch, deploy, tickets }) {
     if (!prs.length) throw new Error(`No open pull request to put on ${this.settings.label} ${number}`)
     return this.exec(number, {
       kind: deploy ? 'sync' : 'preview',
       cwd,
       steps: [[bin, args]],
       record: { tickets, prs },
-      done: (item, run) => { if (deploy) item.synced = { at: run.at, tickets, prs } }
+      done: (item, run) => { if (deploy) item.synced = { at: run.at, tickets, prs, branch } }
     })
   }
 
