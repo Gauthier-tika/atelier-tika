@@ -8,6 +8,7 @@ const KEY = /\b[A-Z][A-Z0-9]+-\d+\b/g
 const projectsDir = path.join(os.homedir(), '.claude/projects')
 const stateDir = path.join(process.env.XDG_RUNTIME_DIR || `/tmp/claude-sessions-${process.getuid()}`, 'claude-sessions')
 const RECENT_DAYS = 30
+const LEADING_TAGS = /^(\s*<([a-z][a-z-]*)[\s>][\s\S]*?<\/\2>)+/
 
 function keysIn(...texts) {
   return [...new Set(texts.filter(Boolean).join(' ').match(KEY) || [])]
@@ -63,6 +64,28 @@ function promptText(entry) {
   return ''
 }
 
+function readable(text) {
+  const name = text.match(/<command-name>([\s\S]*?)<\/command-name>/)
+  if (!name) return text.replace(LEADING_TAGS, '')
+  const args = text.match(/<command-args>([\s\S]*?)<\/command-args>/)
+  return `${name[1]} ${args ? args[1] : ''}`
+}
+
+function firstPrompt(entries) {
+  let localCommand = false
+  for (const entry of entries.filter(entry => entry.type === 'user')) {
+    const text = promptText(entry)
+    if (entry.isMeta) {
+      localCommand = text.includes('<local-command-caveat>')
+      continue
+    }
+    const prompt = localCommand ? '' : readable(text).replace(/\s+/g, ' ').trim()
+    localCommand = false
+    if (prompt) return prompt
+  }
+  return ''
+}
+
 const transcriptCache = new Map()
 
 function summarize(file, stat) {
@@ -73,9 +96,8 @@ function summarize(file, stat) {
     const key = Object.keys(entry).find(k => k.endsWith('Title') && typeof entry[k] === 'string')
     if (String(entry.type || '').endsWith('-title') && key) title = entry[key]
   }
-  const firstPrompt = head.find(entry => entry.type === 'user' && !entry.isMeta && promptText(entry).trim())
   const cwd = head.find(entry => entry.cwd)?.cwd || tail.find(entry => entry.cwd)?.cwd || ''
-  const prompt = firstPrompt ? promptText(firstPrompt).replace(/\s+/g, ' ').slice(0, 300) : ''
+  const prompt = firstPrompt(head).slice(0, 300)
   return {
     id: path.basename(file, '.jsonl'),
     title,

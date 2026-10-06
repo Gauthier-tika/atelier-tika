@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -12,6 +13,15 @@ SWAY = DESKTOP == "sway"
 STATE_DIR = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or f"/tmp/claude-sessions-{os.getuid()}", "claude-sessions")
 NEEDS_YOU = ("permission_prompt", "elicitation_dialog", "elicitation_url_dialog", "agent_needs_input")
 INTERRUPTED = "[Request interrupted by user"
+LEADING_TAGS = re.compile(r"^(\s*<([a-z][a-z-]*)[\s>].*?</\2>)+", re.S)
+
+
+def readable(prompt):
+    name = re.search(r"<command-name>(.*?)</command-name>", prompt, re.S)
+    if name:
+        args = re.search(r"<command-args>(.*?)</command-args>", prompt, re.S)
+        return f"{name.group(1)} {args.group(1) if args else ''}"
+    return LEADING_TAGS.sub("", prompt)
 
 
 def state_path(session_id):
@@ -227,7 +237,9 @@ def hook():
             status, message = "idle", ""
     elif event == "UserPromptSubmit":
         status, message = "working", ""
-        session["prompt"] = " ".join(str(payload.get("prompt", "")).split())[:200]
+        prompt = " ".join(readable(str(payload.get("prompt", ""))).split())[:200]
+        if prompt:
+            session["prompt"] = prompt
     elif event in ("PreToolUse", "PostToolUse", "PostToolUseFailure"):
         status, message = "working", ""
     elif event == "Notification" and payload.get("notification_type") in NEEDS_YOU:
