@@ -73,7 +73,7 @@ class Runs {
       const marks = this.marks[run.id] || {}
       const answered = run.question && marks.answered === run.question.asked
       const status = marks.ended && LIVE.includes(run.status) ? 'ended' : answered ? 'running' : run.status
-      return { ...run, status, question: answered ? null : run.question, dismissed: Boolean(marks.dismissed) }
+      return { ...run, status, live: LIVE.includes(status), question: answered ? null : run.question, dismissed: Boolean(marks.dismissed) }
     }).sort((a, b) => b.startedAt - a.startedAt)
   }
 

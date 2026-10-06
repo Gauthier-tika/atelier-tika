@@ -154,7 +154,7 @@ const timer = { running: { key: 'SHOP-482', startedAt: now - 23 * MIN }, unlogge
 
 const qualifs = [{ number: 4, tickets: ['SHOP-469'], last: null, current: null }]
 
-const run = (id, extra) => ({ id, workflow: 'autopilot', label: 'Solve the next ticket', terminal: `run:${id}`, pr: null, question: null, events: [], open: false, dismissed: false, ...extra })
+const run = (id, extra) => ({ id, workflow: 'autopilot', label: 'Solve the next ticket', terminal: `run:${id}`, pr: null, question: null, events: [], open: false, dismissed: false, live: ['starting', 'running', 'waiting'].includes(extra.status), ...extra })
 const runs = [
   run('autopilot-2', {
     status: 'waiting',

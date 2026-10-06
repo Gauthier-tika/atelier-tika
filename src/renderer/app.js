@@ -38,31 +38,27 @@ const G = {
   eye: svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>')
 }
 
+function stored(key, parse, fallback) {
+  try {
+    const value = localStorage.getItem(key)
+    return value === null ? fallback : parse(value)
+  } catch {
+    return fallback
+  }
+}
+
+function store(key, value) {
+  try {
+    localStorage.setItem(key, value)
+  } catch {}
+}
+
 const ui = {
   state: null,
-  repo: (() => {
-    try {
-      return localStorage.getItem('atelier.repo')
-    } catch {
-      return null
-    }
-  })(),
+  repo: stored('atelier.repo', value => value, null),
   tab: 'mine',
-  settingsTab: (() => {
-    try {
-      const saved = localStorage.getItem('atelier.settingsTab')
-      return ['tickets', 'qualifs'].includes(saved) ? saved : 'global'
-    } catch {
-      return 'global'
-    }
-  })(),
-  hiddenRepos: (() => {
-    try {
-      return new Set(JSON.parse(localStorage.getItem('atelier.hiddenRepos') || '[]'))
-    } catch {
-      return new Set()
-    }
-  })(),
+  settingsTab: stored('atelier.settingsTab', value => ['tickets', 'qualifs'].includes(value) ? value : 'global', 'global'),
+  hiddenRepos: stored('atelier.hiddenRepos', value => new Set(JSON.parse(value)), new Set()),
   repoMenu: false,
   confirm: null,
   drafts: {},
@@ -74,6 +70,30 @@ const ui = {
 const $ = id => document.getElementById(id)
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch])
+
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+
+const dataAttrs = data => Object.entries(data).map(([name, value]) => `data-${name}="${esc(value)}"`).join(' ')
+
+const confirming = (type, match) => ui.confirm?.type === type && Object.entries(match).every(([name, value]) => ui.confirm[name] === value)
+
+function confirmBox({ question, act, data, label, busyLabel = label, busy = false, disabled = busy }) {
+  return `<div class="confirm">
+      <span class="question">${question}</span>
+      <button class="btn primary" data-act="${act}" ${dataAttrs(data)} ${disabled ? 'disabled' : ''}>${busy ? busyLabel : label}</button>
+      <button class="btn quiet" data-act="cancel">Cancel</button>
+    </div>`
+}
+
+function jiraKey(key, url, title = `Open ${key} in Jira`) {
+  return url
+    ? `<button class="key code" data-act="open-url" data-url="${esc(url)}" title="${esc(title)}">${esc(key)}</button>`
+    : `<span class="key code">${esc(key)}</span>`
+}
+
+function removeButton({ act, data, label, disabled = false }) {
+  return `<button class="unassign" data-act="${act}" ${dataAttrs(data)} title="${esc(label)}" aria-label="${esc(label)}" ${disabled ? 'disabled' : ''}><span class="glyph">${G.cross}</span></button>`
+}
 
 function duration(seconds) {
   const minutes = Math.round(seconds / 60)
@@ -104,8 +124,7 @@ function ago(value) {
 
 function age(value) {
   const days = Math.floor((Date.now() - Date.parse(value)) / 86400000)
-  if (days < 1) return 'opened today'
-  return days === 1 ? 'open 1 day' : `open ${days} days`
+  return days < 1 ? 'opened today' : `open ${plural(days, 'day')}`
 }
 
 function parseDuration(text) {
@@ -191,7 +210,7 @@ function renderSync(state) {
 /* Ticket pieces */
 
 function track(ticket, columns) {
-  const target = ui.confirm?.type === 'move' && ui.confirm.key === ticket.key ? ui.confirm.station : -1
+  const target = confirming('move', { key: ticket.key }) ? ui.confirm.station : -1
   const stops = columns.map((name, i) => {
     const cls = i === ticket.station ? 'here' : i < ticket.station ? 'passed' : ''
     const label = i === ticket.station ? `${name} (current column)` : `Move to ${name}`
@@ -204,11 +223,11 @@ function withoutKey(text, key) {
   return String(text || '').replace(new RegExp(`\\b${key}\\b[\\s:–-]*`, 'g'), '').trim()
 }
 
-function sessionLook(s) {
+function sessionLook(s, { unread = false } = {}) {
   return {
     'needs-you': ['sand', 'Needs you'],
     working: ['purple', 'Working'],
-    done: s.seen ? ['idle', 'Finished'] : ['sand', 'Finished'],
+    done: s.seen ? ['idle', 'Finished'] : ['sand', unread ? 'Finished, unread' : 'Finished'],
     idle: ['idle', 'Idle']
   }[s.status] || ['idle', s.status]
 }
@@ -338,12 +357,14 @@ function newTimeForm() {
 }
 
 function deleteConfirm(entry) {
-  const busy = ui.busy.has(`log:${entry.key}`)
-  return `<div class="confirm">
-    <span class="question">Delete the <strong class="code">${duration(entry.seconds)}</strong> logged on <strong class="code">${esc(entry.key)}</strong> at ${esc(entry.time)}? This removes it from Jira.</span>
-    <button class="btn primary" data-act="delete-time" data-id="${esc(entry.id)}" data-key="${esc(entry.key)}" ${busy ? 'disabled' : ''}>${busy ? 'Deleting…' : 'Delete'}</button>
-    <button class="btn quiet" data-act="cancel">Cancel</button>
-  </div>`
+  return confirmBox({
+    question: `Delete the <strong class="code">${duration(entry.seconds)}</strong> logged on <strong class="code">${esc(entry.key)}</strong> at ${esc(entry.time)}? This removes it from Jira.`,
+    act: 'delete-time',
+    data: { id: entry.id, key: entry.key },
+    label: 'Delete',
+    busyLabel: 'Deleting…',
+    busy: ui.busy.has(`log:${entry.key}`)
+  })
 }
 
 function renderTime(state) {
@@ -360,13 +381,13 @@ function renderTime(state) {
   } else {
     parts.push(`<p class="repos"><span class="code">${duration(time.today)}</span> logged today, oldest first</p>`)
     parts.push(entries.map(entry => {
-      const editing = ui.confirm?.type === 'edit-time' && ui.confirm.id === entry.id
-      const adding = ui.confirm?.type === 'manual-time' && ui.confirm.scope === 'time' && ui.confirm.key === entry.key && ui.confirm.entry === entry.id
-      const deleting = ui.confirm?.type === 'delete-time' && ui.confirm.id === entry.id
+      const editing = confirming('edit-time', { id: entry.id })
+      const adding = confirming('manual-time', { scope: 'time', key: entry.key, entry: entry.id })
+      const deleting = confirming('delete-time', { id: entry.id })
       return `<article class="time-entry" data-entry="${esc(entry.id)}">
         <div class="head">
           <span class="at code">${esc(entry.time)}</span>
-          <button class="key code" data-act="open-url" data-url="${esc(entry.url)}" title="Open ${esc(entry.key)} in Jira">${esc(entry.key)}</button>
+          ${jiraKey(entry.key, entry.url)}
           <span class="summary" title="${esc(entry.summary)}">${esc(entry.summary)}</span>
           <span class="spent code">${duration(entry.seconds)}</span>
           <button class="play" data-act="ask-edit-time" data-id="${esc(entry.id)}" data-key="${esc(entry.key)}" title="Change this time entry" aria-label="Change the time entry of ${esc(entry.key)}"><span class="glyph">${G.edit}</span><span class="t">Edit</span></button>
@@ -396,25 +417,28 @@ function rebaseChip(ticket) {
 }
 
 function confirmRow(ticket, columns) {
-  if (ui.confirm?.type === 'rebase' && ui.confirm.key === ticket.key && ticket.rebasable) {
+  if (confirming('rebase', { key: ticket.key }) && ticket.rebasable) {
     const pr = ticket.rebasable
-    const busy = ui.busy.has(`rebase:${ticket.key}`)
-    return `<div class="confirm">
-      <span class="question">Rebase <strong class="code">#${pr.number}</strong> onto <strong class="code">origin/${esc(pr.base)}</strong> and force-push <span class="code">${esc(pr.branch)}</span>? On conflicts, Claude resolves them in a worktree and asks you before pushing.</span>
-      <button class="btn primary" data-act="rebase" data-key="${esc(ticket.key)}" ${busy ? 'disabled' : ''}>${busy ? 'Rebasing…' : 'Rebase and push'}</button>
-      <button class="btn quiet" data-act="cancel">Cancel</button>
-    </div>`
+    return confirmBox({
+      question: `Rebase <strong class="code">#${pr.number}</strong> onto <strong class="code">origin/${esc(pr.base)}</strong> and force-push <span class="code">${esc(pr.branch)}</span>? On conflicts, Claude resolves them in a worktree and asks you before pushing.`,
+      act: 'rebase',
+      data: { key: ticket.key },
+      label: 'Rebase and push',
+      busyLabel: 'Rebasing…',
+      busy: ui.busy.has(`rebase:${ticket.key}`)
+    })
   }
-  if (ui.confirm?.type === 'move' && ui.confirm.key === ticket.key) {
-    const to = columns[ui.confirm.station]
-    const busy = ui.busy.has(`move:${ticket.key}`)
-    return `<div class="confirm">
-      <span class="question">Move <strong class="code">${esc(ticket.key)}</strong> from ${esc(ticket.column)} to <strong>${esc(to)}</strong>?</span>
-      <button class="btn primary" data-act="move" data-key="${esc(ticket.key)}" ${busy ? 'disabled' : ''}>${busy ? 'Moving…' : 'Move'}</button>
-      <button class="btn quiet" data-act="cancel">Cancel</button>
-    </div>`
+  if (confirming('move', { key: ticket.key })) {
+    return confirmBox({
+      question: `Move <strong class="code">${esc(ticket.key)}</strong> from ${esc(ticket.column)} to <strong>${esc(columns[ui.confirm.station])}</strong>?`,
+      act: 'move',
+      data: { key: ticket.key },
+      label: 'Move',
+      busyLabel: 'Moving…',
+      busy: ui.busy.has(`move:${ticket.key}`)
+    })
   }
-  if (ui.confirm?.type === 'manual-time' && ui.confirm.key === ticket.key && !ui.confirm.scope) return manualForm(ticket.key)
+  if (confirming('manual-time', { key: ticket.key, scope: undefined })) return manualForm(ticket.key)
   const t = ticket.time
   if (t.unlogged > 0 && !t.runningSince) {
     const draft = ui.drafts[ticket.key] ?? duration(roundedForLog(t.unlogged))
@@ -444,7 +468,7 @@ function ticketRow(ticket, columns) {
     : ''
   return `<article class="${classes.join(' ')}" data-ticket="${esc(ticket.key)}">
     <div class="head">
-      <button class="key code" data-act="open-url" data-url="${esc(ticket.url)}" title="Open ${esc(ticket.key)} in Jira">${esc(ticket.key)}</button>
+      ${jiraKey(ticket.key, ticket.url)}
       <span class="summary" title="${esc(ticket.summary)}">${esc(ticket.summary)}</span>
       ${runTag(ticket)}
       ${ticket.verification ? `<span class="verification" title="Vérification: ${esc(ticket.verification)}">${esc(ticket.verification)}</span>` : ''}
@@ -468,8 +492,6 @@ function ticketRow(ticket, columns) {
 }
 
 /* Workflow runs */
-
-const LIVE_RUN = ['starting', 'running', 'waiting']
 
 function runLook(run) {
   return {
@@ -509,7 +531,7 @@ function runQuestion(run) {
 
 function runCard(state, run) {
   const [color, label] = runLook(run)
-  const live = LIVE_RUN.includes(run.status)
+  const live = run.live
   const ticket = run.ticket && [...state.tickets, ...state.unassigned].find(t => t.key === run.ticket)
   const since = run.stageSince || run.startedAt
   const line = live ? run.stage || 'Starting Claude…' : run.message || run.stage || ''
@@ -518,12 +540,12 @@ function runCard(state, run) {
       <span class="glyph">${G.workflow}</span>
       <h3>${esc(run.label)}</h3>
       <span class="chip ${color}"><span class="label">${esc(label)}</span></span>
-      ${run.ticket ? ticket ? `<button class="key code" data-act="open-url" data-url="${esc(ticket.url)}" title="${esc(ticket.summary)}">${esc(run.ticket)}</button>` : `<span class="key code">${esc(run.ticket)}</span>` : ''}
+      ${run.ticket ? jiraKey(run.ticket, ticket?.url, ticket?.summary) : ''}
       ${runPr(state, run)}
       <span class="run-actions">
         ${run.session && !run.running ? `<button class="btn quiet" data-act="run-resume" data-id="${esc(run.id)}" title="Resume this run's Claude session in Atelier" ${ui.busy.has(`run:${run.id}`) ? 'disabled' : ''}><span class="glyph">${G.terminal}</span><span class="t">Resume the session</span></button>`
           : run.open ? `<button class="btn quiet" data-act="open-session" data-id="${esc(run.terminal)}"><span class="glyph">${G.terminal}</span><span class="t">Open the session</span></button>` : ''}
-        ${live ? '' : `<button class="unassign" data-act="run-dismiss" data-id="${esc(run.id)}" title="Remove this run from the list" aria-label="Remove this run from the list"><span class="glyph">${G.cross}</span></button>`}
+        ${live ? '' : removeButton({ act: 'run-dismiss', data: { id: run.id }, label: 'Remove this run from the list' })}
       </span>
     </div>
     ${line ? `<p class="run-stage">${live ? `<span class="code" data-since="${since}">${clockText(Date.now() - since)}</span>` : `<span class="meta">${ago(run.finishedAt || run.updated || run.startedAt)}</span>`}<span>${esc(line)}</span></p>` : ''}
@@ -588,7 +610,7 @@ function globalSettings(state) {
       <span class="code path">${esc(state.devDir)}</span>
       <button class="btn" data-act="choose-dev-dir" ${ui.busy.has('choose-dev-dir') ? 'disabled' : ''}><span class="glyph">${G.folder}</span><span class="t">Change</span></button>
       <span class="hint">${state.reposPinned ? 'Not used: "repos" in config.json lists the repositories'
-        : state.repos.length ? `${state.repos.length} ${state.repos.length === 1 ? 'repository' : 'repositories'}, each a folder right inside it with a .git or .sl directory`
+        : state.repos.length ? `${plural(state.repos.length, 'repository', 'repositories')}, each a folder right inside it with a .git or .sl directory`
         : 'No repository: Atelier looks for folders right inside it with a .git or .sl directory'}</span>
     </div>`
 }
@@ -741,7 +763,7 @@ function renderLaunch(state) {
       ${state.sapling ? `<button class="tool" data-act="sl-web" title="Show Sapling Web (sl web) on ${esc(repo)} inside Atelier" ${starting ? 'disabled' : ''}><span class="glyph">${G.smartlog}</span><span class="t">${starting ? 'Starting…' : 'sl web'}</span></button>` : ''}
     </div>
     ${state.workflows.length ? `<div class="launch-workflows">${state.workflows.map(w => {
-      const live = state.runs.some(run => run.workflow === w.id && LIVE_RUN.includes(run.status))
+      const live = state.runs.some(run => run.workflow === w.id && run.live)
       return `<button class="tool" data-act="workflow-run" data-id="${esc(w.id)}" title="${esc(live ? `Open the running ${w.label}` : w.description || `Start ${w.label}`)}">
         <span class="glyph">${G.workflow}</span><span class="t">${esc(w.label)}</span>${live ? '<span class="state">Running</span>' : ''}</button>`
     }).join('')}</div>` : ''}`
@@ -815,10 +837,10 @@ function renderMine(state) {
       </div>`
     }).join(''))
     parts.push(outside.map(s => {
-      const look = { 'needs-you': ['sand', 'Needs you'], working: ['purple', 'Working'], done: s.seen ? ['idle', 'Finished'] : ['sand', 'Finished, unread'] }[s.status] || ['idle', 'Idle']
+      const [color, label] = sessionLook(s, { unread: true })
       return `<div class="row">
         <button class="title" data-act="focus-session" data-id="${esc(s.id)}" title="Switch to this session's terminal">${esc(s.title || s.prompt || s.project)}</button>
-        <span class="chip ${look[0]}"><span class="glyph claude">${G.claude}</span><span class="label">${look[1]}</span></span>
+        <span class="chip ${color}"><span class="glyph claude">${G.claude}</span><span class="label">${label}</span></span>
         <span class="meta code">${esc(s.project)}</span>
       </div>`
     }).join(''))
@@ -862,11 +884,10 @@ function renderStage(state, stage, title) {
 }
 
 function unassignedRow(ticket, inProgress) {
-  const asking = ui.confirm?.type === 'take' && ui.confirm.key === ticket.key
   const busy = ui.busy.has(`take:${ticket.key}`)
   return `<article class="ticket" data-ticket="${esc(ticket.key)}">
     <div class="head">
-      <button class="key code" data-act="open-url" data-url="${esc(ticket.url)}" title="Open ${esc(ticket.key)} in Jira">${esc(ticket.key)}</button>
+      ${jiraKey(ticket.key, ticket.url)}
       <span class="summary" title="${esc(ticket.summary)}">${esc(ticket.summary)}</span>
       <span class="type">${esc(ticket.type)}</span>
       <button class="play" data-act="ask-take" data-key="${esc(ticket.key)}" ${busy ? 'disabled' : ''} title="Assign ${esc(ticket.key)} to you and move it to ${esc(inProgress || 'In progress')}">
@@ -877,11 +898,14 @@ function unassignedRow(ticket, inProgress) {
       ${ticket.priority ? `<span class="type">${esc(ticket.priority)}</span>` : ''}
       <span class="type">Updated ${ago(ticket.updated)}</span>
     </div>
-    ${asking ? `<div class="confirm">
-      <span class="question">Assign <strong class="code">${esc(ticket.key)}</strong> to you and move it from ${esc(ticket.column)} to <strong>${esc(inProgress || 'In progress')}</strong>?</span>
-      <button class="btn primary" data-act="take" data-key="${esc(ticket.key)}" ${busy ? 'disabled' : ''}>${busy ? 'Taking…' : 'Take it'}</button>
-      <button class="btn quiet" data-act="cancel">Cancel</button>
-    </div>` : ''}
+    ${confirming('take', { key: ticket.key }) ? confirmBox({
+      question: `Assign <strong class="code">${esc(ticket.key)}</strong> to you and move it from ${esc(ticket.column)} to <strong>${esc(inProgress || 'In progress')}</strong>?`,
+      act: 'take',
+      data: { key: ticket.key },
+      label: 'Take it',
+      busyLabel: 'Taking…',
+      busy
+    }) : ''}
   </article>`
 }
 
@@ -957,11 +981,11 @@ function qualifTicket(qualifs, q, row) {
     : row.merged ? `<span class="no-pr">Merged, already in ${esc(qualifs.base)}</span>`
     : '<span class="no-pr missing">No open pull request</span>'
   return `<li class="qualif-ticket">
-    ${row.url ? `<button class="key code" data-act="open-url" data-url="${esc(row.url)}" title="Open ${esc(row.key)} in Jira">${esc(row.key)}</button>` : `<span class="key code">${esc(row.key)}</span>`}
+    ${jiraKey(row.key, row.url)}
     <span class="summary" title="${esc(row.summary)}">${esc(row.summary || 'Not assigned to you any more')}</span>
     ${jira}
     ${prs}
-    <button class="unassign" data-act="qualif-unassign" data-number="${q.number}" data-key="${esc(row.key)}" title="Take ${esc(row.key)} off ${esc(label)} ${q.number}" aria-label="Take ${esc(row.key)} off ${esc(label)} ${q.number}" ${q.current ? 'disabled' : ''}><span class="glyph">${G.cross}</span></button>
+    ${removeButton({ act: 'qualif-unassign', data: { number: q.number, key: row.key }, label: `Take ${row.key} off ${label} ${q.number}`, disabled: q.current })}
   </li>`
 }
 
@@ -1003,21 +1027,28 @@ function qualifCard(state, q) {
     : !q.toSync.length ? 'Add a ticket with an open pull request first' : ''
   const choices = qualifs.candidates.filter(c => !q.tickets.some(row => row.key === c.key))
   const run = q.current || q.last
-  const confirming = ui.confirm?.type === 'qualif-sync' && ui.confirm.number === q.number
-  const confirmingCache = ui.confirm?.type === 'qualif-cache' && ui.confirm.number === q.number
   const prList = q.toSync.map(pr => `<span class="code">#${pr.number}</span>`).join(' ')
   const jiraKeys = !qualifs.jira ? [] : q.tickets.filter(row => row.prs.length && row.jiraQualif !== q.number).map(row => `<span class="code">${esc(row.key)}</span>`)
   const deployRunning = q.deploy && q.deploy.status !== 'completed'
+  const branchHint = q.direct ? 'Branch of the only pull request, deployed as it is' : 'Branch rebuilt by qualif-sync'
+  const previewHint = why || (q.direct ? 'Check the pull request and show what would be deployed, deploy nothing' : 'Build the branch locally and show it, push nothing')
+  const syncHint = why || (q.direct ? `Deploy ${q.branch} to ${name} as it is` : qualifs.deploys ? `Push the branch and deploy it to ${name}` : 'Push the branch')
+  const cacheHint = busy ? why : deployRunning ? 'A deployment is still running: clear the cache once it is done' : `Clear the cache of ${name}`
+  const syncLabel = qualifs.deploys ? 'Sync and deploy' : 'Sync'
+  const syncQuestion = q.direct
+    ? `Deploy <strong class="code">${esc(q.branch)}</strong>, the branch of ${prList}, to <strong>${esc(name)}</strong> as it is, without rebuilding a ${esc(qualifs.label.toLowerCase())} branch`
+    : `Rebuild <strong class="code">${esc(q.branch || 'the branch')}</strong> from ${esc(qualifs.base)} + ${prList}, force-push it${qualifs.deploys ? ` and deploy it to <strong>${esc(name)}</strong>` : ''}`
+  const cacheQuestion = q.cache && (q.cache.description ? esc(q.cache.description) : `Clear the cache of <strong>${esc(name)}</strong>? Atelier runs ${q.cache.commands.map(command => `<span class="code">${esc(command)}</span>`).join(', then ')}.`)
   return `<article class="qualif ${q.current ? 'running' : ''}" data-qualif="${q.number}">
     <div class="qualif-head">
       <h3>${q.url ? `<button data-act="open-url" data-url="${esc(q.url)}" title="Open ${esc(q.url)}">${esc(name)}</button>` : esc(name)}</h3>
       <span class="chip ${color}"><span class="label">${esc(label)}</span></span>
-      ${q.branch ? `<span class="branch code" title="${q.direct ? 'Branch of the only pull request, deployed as it is' : 'Branch rebuilt by qualif-sync'}">${esc(q.branch)}</span>` : ''}
+      ${q.branch ? `<span class="branch code" title="${branchHint}">${esc(q.branch)}</span>` : ''}
       <span class="qualif-actions">
-        <button class="btn quiet" data-act="qualif-sync" data-number="${q.number}" ${canSync ? '' : 'disabled'} title="${esc(why || (q.direct ? 'Check the pull request and show what would be deployed, deploy nothing' : 'Build the branch locally and show it, push nothing'))}">Preview</button>
-        <button class="btn primary" data-act="ask-qualif-sync" data-number="${q.number}" ${canSync ? '' : 'disabled'} title="${esc(why || (q.direct ? `Deploy ${q.branch} to ${name} as it is` : qualifs.deploys ? `Push the branch and deploy it to ${name}` : 'Push the branch'))}">${qualifs.deploys ? 'Sync and deploy' : 'Sync'}</button>
-        ${qualifs.cache ? `<button class="btn quiet" data-act="ask-qualif-cache" data-number="${q.number}" ${busy ? 'disabled' : ''} title="${esc(busy ? why : deployRunning ? 'A deployment is still running: clear the cache once it is done' : `Clear the cache of ${name}`)}"><span class="glyph">${G.broom}</span><span class="t">Clear the cache</span></button>` : ''}
-        <button class="unassign" data-act="qualif-remove" data-number="${q.number}" title="Remove ${esc(name)} from Atelier" aria-label="Remove ${esc(name)} from Atelier" ${q.current ? 'disabled' : ''}><span class="glyph">${G.cross}</span></button>
+        <button class="btn quiet" data-act="qualif-sync" data-number="${q.number}" ${canSync ? '' : 'disabled'} title="${esc(previewHint)}">Preview</button>
+        <button class="btn primary" data-act="ask-qualif-sync" data-number="${q.number}" ${canSync ? '' : 'disabled'} title="${esc(syncHint)}">${syncLabel}</button>
+        ${q.cache ? `<button class="btn quiet" data-act="ask-qualif-cache" data-number="${q.number}" ${busy ? 'disabled' : ''} title="${esc(cacheHint)}"><span class="glyph">${G.broom}</span><span class="t">Clear the cache</span></button>` : ''}
+        ${removeButton({ act: 'qualif-remove', data: { number: q.number }, label: `Remove ${name} from Atelier`, disabled: q.current })}
       </span>
     </div>
     ${deployStatus(q, qualifs.cache)}
@@ -1026,17 +1057,20 @@ function qualifCard(state, q) {
       <option value="">Add a ticket…</option>
       ${choices.map(c => `<option value="${esc(c.key)}">${esc(c.key)} · ${esc(c.summary)}${qualifs.jira && c.qualif ? ` (Jira: ${esc(qualifs.label)} ${c.qualif})` : ''}</option>`).join('')}
     </select>` : ''}
-    ${confirming ? `<div class="confirm">
-      <span class="question">${q.direct ? `Deploy <strong class="code">${esc(q.branch)}</strong>, the branch of ${prList}, to <strong>${esc(name)}</strong> as it is, without rebuilding a ${esc(qualifs.label.toLowerCase())} branch`
-        : `Rebuild <strong class="code">${esc(q.branch || 'the branch')}</strong> from ${esc(qualifs.base)} + ${prList}, force-push it${qualifs.deploys ? ` and deploy it to <strong>${esc(name)}</strong>` : ''}`}${jiraKeys.length ? `, then set ${esc(name)} in Jira on ${jiraKeys.join(', ')}` : ''}?</span>
-      <button class="btn primary" data-act="qualif-deploy" data-number="${q.number}" ${canSync ? '' : 'disabled'}>${qualifs.deploys ? 'Sync and deploy' : 'Sync'}</button>
-      <button class="btn quiet" data-act="cancel">Cancel</button>
-    </div>` : ''}
-    ${confirmingCache && q.cache ? `<div class="confirm">
-      <span class="question">${q.cache.description ? esc(q.cache.description) : `Clear the cache of <strong>${esc(name)}</strong>? Atelier runs ${q.cache.commands.map(command => `<span class="code">${esc(command)}</span>`).join(', then ')}.`}${deployRunning ? ' A deployment is still running.' : ''}</span>
-      <button class="btn primary" data-act="qualif-cache" data-number="${q.number}" ${busy ? 'disabled' : ''}>Clear the cache</button>
-      <button class="btn quiet" data-act="cancel">Cancel</button>
-    </div>` : ''}
+    ${confirming('qualif-sync', { number: q.number }) ? confirmBox({
+      question: `${syncQuestion}${jiraKeys.length ? `, then set ${esc(name)} in Jira on ${jiraKeys.join(', ')}` : ''}?`,
+      act: 'qualif-deploy',
+      data: { number: q.number },
+      label: syncLabel,
+      disabled: !canSync
+    }) : ''}
+    ${confirming('qualif-cache', { number: q.number }) && q.cache ? confirmBox({
+      question: `${cacheQuestion}${deployRunning ? ' A deployment is still running.' : ''}`,
+      act: 'qualif-cache',
+      data: { number: q.number },
+      label: 'Clear the cache',
+      disabled: busy
+    }) : ''}
     ${run ? `<details class="qualif-log" data-log="${q.number}" ${ui.logs.has(q.number) || q.current ? 'open' : ''}>
       <summary>${q.current ? 'Output so far' : `${RUN_NAMES[runKind(run)].done} ${ago(run.at)}${run.ok ? '' : ', failed'}`}</summary>
       <pre class="code">${esc(run.output)}</pre>
@@ -1086,7 +1120,7 @@ function reviewRow(pr) {
       <span class="code"><span class="add">+${pr.additions}</span> <span class="del">−${pr.deletions}</span></span>
       <span class="${old ? 'old' : ''}">${age(pr.createdAt)}</span>
       ${checks(pr)}
-      ${approvals ? `<span class="mine-approved">${approvals} approval${approvals > 1 ? 's' : ''}</span>` : ''}
+      ${approvals ? `<span class="mine-approved">${plural(approvals, 'approval')}</span>` : ''}
       ${myReviewFact(pr)}
     </div>
     <div class="actions">
@@ -1251,10 +1285,22 @@ const pickedRepo = () => $('repo-pick')?.value || ui.state.repos[0]
 
 function setHiddenRepos(repos) {
   ui.hiddenRepos = new Set(repos)
-  try {
-    localStorage.setItem('atelier.hiddenRepos', JSON.stringify([...ui.hiddenRepos]))
-  } catch {}
+  store('atelier.hiddenRepos', JSON.stringify([...ui.hiddenRepos]))
   render()
+}
+
+function askConfirm(confirm, button) {
+  ui.confirm = confirm
+  render()
+  ;[...document.querySelectorAll(button)].find(el => el.offsetParent !== null)?.focus()
+}
+
+async function confirmed(type, match, run) {
+  if (!confirming(type, match)) return null
+  const result = await run()
+  if (result?.ok) ui.confirm = null
+  render()
+  return result
 }
 
 const handlers = {
@@ -1280,20 +1326,11 @@ const handlers = {
     const frame = web.frames.get(web.active)
     if (frame) frame.src = frame.dataset.url
   },
-  'ask-take': el => {
-    ui.confirm = { type: 'take', key: el.dataset.key }
-    render()
-    $('unassigned').querySelector(`[data-ticket="${el.dataset.key}"] [data-act="take"]`)?.focus()
-  },
+  'ask-take': el => askConfirm({ type: 'take', key: el.dataset.key }, `[data-ticket="${el.dataset.key}"] [data-act="take"]`),
   async take(el) {
     const key = el.dataset.key
-    if (ui.confirm?.type !== 'take' || ui.confirm.key !== key) return
-    const result = await act('take', { key }, `take:${key}`)
-    if (result?.ok) {
-      ui.confirm = null
-      setTab('mine')
-    }
-    render()
+    const result = await confirmed('take', { key }, () => act('take', { key }, `take:${key}`))
+    if (result?.ok) setTab('mine')
   },
   'open-ticket': el => {
     const ticket = ui.state.tickets.find(t => t.key === el.dataset.key)
@@ -1307,86 +1344,35 @@ const handlers = {
   'run-answer': el => act('runAnswer', { id: el.dataset.id, option: el.dataset.option }, `run:${el.dataset.id}`),
   'run-dismiss': el => act('runDismiss', { id: el.dataset.id }),
   'run-resume': el => act('runResume', { id: el.dataset.id }, `run:${el.dataset.id}`),
-  'ask-move': el => {
-    ui.confirm = { type: 'move', key: el.dataset.key, station: Number(el.dataset.station) }
-    render()
-    ;[...document.querySelectorAll(`[data-ticket="${el.dataset.key}"] [data-act="move"]`)].find(b => b.offsetParent !== null)?.focus()
-  },
-  'ask-manual-time': el => {
-    const key = el.dataset.key
-    ui.confirm = { type: 'manual-time', key, date: localDay(), scope: el.dataset.scope, entry: el.dataset.entry }
-    render()
-    ;[...document.querySelectorAll(`[data-draft="manual:${key}"]`)].find(i => i.offsetParent !== null)?.focus()
-  },
-  'ask-delete-time': el => {
-    ui.confirm = { type: 'delete-time', key: el.dataset.key, id: el.dataset.id }
-    render()
-    document.querySelector(`[data-act="delete-time"][data-id="${el.dataset.id}"]`)?.focus()
-  },
-  async 'delete-time'(el) {
-    const { key, id } = el.dataset
-    if (ui.confirm?.type !== 'delete-time' || ui.confirm.id !== id) return
-    const result = await act('logDelete', { key, id }, `log:${key}`)
-    if (result?.ok) ui.confirm = null
-    render()
-  },
-  'ask-new-time': () => {
-    ui.confirm = { type: 'new-time', date: localDay() }
-    render()
-    $('new-key')?.focus()
-  },
-  'ask-edit-time': el => {
-    ui.confirm = { type: 'edit-time', key: el.dataset.key, id: el.dataset.id }
-    render()
-    ;[...document.querySelectorAll(`[data-draft="edit:${el.dataset.id}"]`)].find(i => i.offsetParent !== null)?.focus()
-  },
+  'ask-move': el => askConfirm({ type: 'move', key: el.dataset.key, station: Number(el.dataset.station) }, `[data-ticket="${el.dataset.key}"] [data-act="move"]`),
+  'ask-manual-time': el => askConfirm({ type: 'manual-time', key: el.dataset.key, date: localDay(), scope: el.dataset.scope, entry: el.dataset.entry }, `[data-draft="manual:${el.dataset.key}"]`),
+  'ask-delete-time': el => askConfirm({ type: 'delete-time', key: el.dataset.key, id: el.dataset.id }, `[data-act="delete-time"][data-id="${el.dataset.id}"]`),
+  'delete-time': el => confirmed('delete-time', { id: el.dataset.id }, () => act('logDelete', { key: el.dataset.key, id: el.dataset.id }, `log:${el.dataset.key}`)),
+  'ask-new-time': () => askConfirm({ type: 'new-time', date: localDay() }, '#new-key'),
+  'ask-edit-time': el => askConfirm({ type: 'edit-time', key: el.dataset.key, id: el.dataset.id }, `[data-draft="edit:${el.dataset.id}"]`),
   cancel: () => {
     ui.confirm = null
     render()
   },
-  async move(el) {
-    const { key, station } = ui.confirm || {}
-    if (key !== el.dataset.key) return
-    const result = await act('move', { key, station }, `move:${key}`)
-    if (result?.ok) ui.confirm = null
-    render()
-  },
+  move: el => confirmed('move', { key: el.dataset.key }, () => act('move', { key: ui.confirm.key, station: ui.confirm.station }, `move:${el.dataset.key}`)),
   flag: el => act('flag', { key: el.dataset.key, blocked: el.dataset.blocked === '1' }, `flag:${el.dataset.key}`),
   'qualif-sync': el => act('qualifSync', { number: Number(el.dataset.number), deploy: false }, `qualif:${el.dataset.number}`),
-  'ask-qualif-sync': el => {
-    ui.confirm = { type: 'qualif-sync', number: Number(el.dataset.number) }
-    render()
-    $('qualifs').querySelector(`[data-qualif="${el.dataset.number}"] [data-act="qualif-deploy"]`)?.focus()
-  },
-  async 'qualif-deploy'(el) {
+  'ask-qualif-sync': el => askConfirm({ type: 'qualif-sync', number: Number(el.dataset.number) }, `[data-qualif="${el.dataset.number}"] [data-act="qualif-deploy"]`),
+  'qualif-deploy': el => {
     const number = Number(el.dataset.number)
-    if (ui.confirm?.type !== 'qualif-sync' || ui.confirm.number !== number) return
+    if (!confirming('qualif-sync', { number })) return
     ui.confirm = null
-    await act('qualifSync', { number, deploy: true }, `qualif:${number}`)
+    act('qualifSync', { number, deploy: true }, `qualif:${number}`)
   },
-  'ask-qualif-cache': el => {
-    ui.confirm = { type: 'qualif-cache', number: Number(el.dataset.number) }
-    render()
-    $('qualifs').querySelector(`[data-qualif="${el.dataset.number}"] [data-act="qualif-cache"]`)?.focus()
-  },
-  async 'qualif-cache'(el) {
+  'ask-qualif-cache': el => askConfirm({ type: 'qualif-cache', number: Number(el.dataset.number) }, `[data-qualif="${el.dataset.number}"] [data-act="qualif-cache"]`),
+  'qualif-cache': el => {
     const number = Number(el.dataset.number)
-    if (ui.confirm?.type !== 'qualif-cache' || ui.confirm.number !== number) return
+    if (!confirming('qualif-cache', { number })) return
     ui.confirm = null
-    await act('qualifCacheClear', { number }, `qualif:${number}`)
+    act('qualifCacheClear', { number }, `qualif:${number}`)
   },
-  'ask-rebase': el => {
-    ui.confirm = { type: 'rebase', key: el.dataset.key }
-    render()
-    ;[...document.querySelectorAll(`[data-ticket="${el.dataset.key}"] [data-act="rebase"]`)].find(b => b.offsetParent !== null)?.focus()
-  },
-  async rebase(el) {
-    const key = el.dataset.key
-    if (ui.confirm?.type !== 'rebase' || ui.confirm.key !== key) return
-    const result = await act('rebase', { key }, `rebase:${key}`)
-    if (result?.ok) ui.confirm = null
-    render()
-  },
+  'ask-rebase': el => askConfirm({ type: 'rebase', key: el.dataset.key }, `[data-ticket="${el.dataset.key}"] [data-act="rebase"]`),
+  rebase: el => confirmed('rebase', { key: el.dataset.key }, () => act('rebase', { key: el.dataset.key }, `rebase:${el.dataset.key}`)),
   'qualif-unassign': el => act('qualifUnassign', { number: Number(el.dataset.number), key: el.dataset.key }),
   'qualif-remove': el => act('qualifRemove', { number: Number(el.dataset.number) }),
   'timer-start': el => act('timerStart', { key: el.dataset.key }),
@@ -1406,9 +1392,7 @@ const handlers = {
   },
   'settings-tab'(el) {
     ui.settingsTab = SETTINGS_TABS.some(tab => tab.id === el.dataset.section) ? el.dataset.section : 'global'
-    try {
-      localStorage.setItem('atelier.settingsTab', ui.settingsTab)
-    } catch {}
+    store('atelier.settingsTab', ui.settingsTab)
     renderSettings(ui.state)
   },
   async 'filter-add'() {
@@ -1503,9 +1487,7 @@ document.addEventListener('change', event => {
   }
   if (pick !== 'repo') return
   ui.repo = event.target.value
-  try {
-    localStorage.setItem('atelier.repo', ui.repo)
-  } catch {}
+  store('atelier.repo', ui.repo)
 })
 
 document.addEventListener('toggle', event => {
@@ -1669,12 +1651,17 @@ $('tabs').addEventListener('click', event => {
   setTab(listing && sub && ui.tab === tab ? 'mine' : tab)
 })
 
+const confirmStillApplies = {
+  move: (confirm, state) => state.tickets.some(t => t.key === confirm.key),
+  take: (confirm, state) => state.unassigned.some(t => t.key === confirm.key),
+  rebase: (confirm, state) => state.tickets.some(t => t.key === confirm.key && t.rebasable),
+  'qualif-sync': (confirm, state) => Boolean(state.qualifs?.items.some(q => q.number === confirm.number)),
+  'qualif-cache': (confirm, state) => Boolean(state.qualifs?.items.some(q => q.number === confirm.number))
+}
+
 window.atelier.onState(state => {
   ui.state = state
-  if (ui.confirm?.type === 'move' && !state.tickets.some(t => t.key === ui.confirm.key)) ui.confirm = null
-  if (ui.confirm?.type === 'take' && !state.unassigned.some(t => t.key === ui.confirm.key)) ui.confirm = null
-  if (/^qualif-/.test(ui.confirm?.type) && !state.qualifs?.items.some(q => q.number === ui.confirm.number)) ui.confirm = null
-  if (ui.confirm?.type === 'rebase' && !state.tickets.some(t => t.key === ui.confirm.key && t.rebasable)) ui.confirm = null
+  if (ui.confirm && confirmStillApplies[ui.confirm.type]?.(ui.confirm, state) === false) ui.confirm = null
   render()
 })
 

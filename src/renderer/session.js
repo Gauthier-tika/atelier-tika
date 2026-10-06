@@ -662,14 +662,9 @@ function sessionStatus(terminal) {
   const run = runOf(terminal)
   if (run?.status === 'waiting') return ['sand', 'Needs you']
   const s = terminal.session
-  if (run && LIVE_RUN.includes(run.status) && s?.status === 'done') return ['purple', 'Working']
+  if (run?.live && s?.status === 'done') return ['purple', 'Working']
   if (!s) return ['purple', 'Starting']
-  return {
-    'needs-you': ['sand', 'Needs you'],
-    working: ['purple', 'Working'],
-    done: s.seen ? ['idle', 'Finished'] : ['sand', 'Finished, unread'],
-    idle: ['idle', 'Idle']
-  }[s.status] || ['idle', s.status]
+  return sessionLook(s, { unread: true })
 }
 
 function sessionName(t) {
@@ -861,7 +856,7 @@ function renderSession() {
     context = `<div class="ticket in-session ${ticket.blocked ? 'blocked' : ''}" data-ticket="${esc(ticket.key)}">
       <div class="head">
         ${back}
-        <button class="key code" data-act="open-url" data-url="${esc(ticket.url)}" title="Open ${esc(ticket.key)} in Jira">${esc(ticket.key)}</button>
+        ${jiraKey(ticket.key, ticket.url)}
         <span class="summary" title="${esc(ticket.summary)}">${esc(ticket.summary)}</span>
         ${editorButton(state, terminal)}
         ${timeCell(ticket)}
