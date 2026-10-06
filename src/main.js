@@ -75,7 +75,7 @@ function repoNamed(name) {
   return repo
 }
 
-const current = () => ({ ...compose({ ...data, qualifs: qualifs.list(), runs: runs.list() }, timer.state, config, terminals.list()), workflows: config.workflows.map(({ id, label, description }) => ({ id, label, description: description || '' })), repos: repos().map(r => r.name), sapling: data.sapling, editor: { name: config.editor.name, mode: config.editor.mode }, editors: editorChoices() })
+const current = () => ({ ...compose({ ...data, qualifs: qualifs.list(), runs: runs.list() }, timer.state, config, terminals.list()), workflows: config.workflows.map(({ id, label, description }) => ({ id, label, description: description || '' })), repos: repos().map(r => r.name), sapling: data.sapling, editor: { name: config.editor.name, mode: config.editor.mode }, editors: editorChoices(), terminal: { name: config.terminal.name, switching: Boolean(wm.desktop) } })
 
 const qualifBranches = () => data.github ? qualifs.list().map(q => `qualif-${data.github.viewer}-${q.number}`) : []
 
@@ -190,7 +190,8 @@ const actions = {
     const embedded = terminals.get(id)
     if (embedded && !embedded.exited && !fresh) return { view: id }
     if (view.session && !view.session.embedded && !fresh) {
-      if (await claude.focus(config, view.session.id)) return 'This session runs in Ghostty, so Atelier switched to it'
+      if (!wm.desktop) throw new Error(`This session runs in ${config.terminal.name}, and Atelier cannot switch windows on this desktop`)
+      if (await claude.focus(config, view.session.id)) return `This session runs in ${config.terminal.name}, so Atelier switched to it`
       throw new Error('The Claude session is running in another terminal, but its window was not found')
     }
     if (embedded) terminals.close(id, { keepChildren: true })
@@ -208,7 +209,8 @@ const actions = {
     const session = data.live.find(s => s.id === id)
     const embedded = session && terminals.list().find(t => t.pid === session.pid && !t.exited)
     if (embedded) return { view: embedded.id }
-    if (await claude.focus(config, id)) return 'Switched to the session in Ghostty'
+    if (!wm.desktop) throw new Error(`This session runs in ${config.terminal.name}, and Atelier cannot switch windows on this desktop`)
+    if (await claude.focus(config, id)) return `Switched to the session in ${config.terminal.name}`
     throw new Error('Its terminal window was not found')
   },
 
@@ -515,7 +517,7 @@ function createWindow() {
     minWidth: 520,
     minHeight: 420,
     show: !shotPath,
-    frame: false,
+    frame: !wm.desktop,
     backgroundColor: THEMES[config.theme] || THEMES.default,
     title: 'Atelier',
     autoHideMenuBar: true,

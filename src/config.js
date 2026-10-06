@@ -1,6 +1,7 @@
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
+const wm = require('./wm')
 
 const home = os.homedir()
 const bundled = name => path.join(__dirname, '..', 'bin', name)
@@ -36,6 +37,7 @@ const defaults = {
   qualifSyncBin: bundled('qualif-sync'),
   claudeCommand: 'claude',
   editor: { command: 'nvim', args: ['.'], mode: 'pane' },
+  terminal: null,
   startPrompt: '/jira {key}',
   reviewPrompt: '/review {number}',
   workflows: [],
@@ -70,6 +72,8 @@ function load() {
   config.editor = { ...defaults.editor, ...user.editor }
   config.editor.command = expand(config.editor.command)
   config.editor.name ||= path.basename(config.editor.command)
+  config.terminal = user.terminal?.command ? { args: [], ...user.terminal, command: expand(user.terminal.command) } : { ...wm.terminal }
+  config.terminal.name ||= path.basename(config.terminal.command)
   config.workflows = (Array.isArray(config.workflows) ? config.workflows : [])
     .filter(w => w?.id && w.prompt)
     .map(w => ({ ...w, id: String(w.id), label: w.label || String(w.id), cwd: expand(w.cwd || config.repoDir) }))
@@ -89,5 +93,6 @@ function save(changes) {
 }
 
 const editorArgs = (editor, directory) => editor.args.map(arg => arg.replaceAll('{dir}', directory))
+const terminalArgs = (terminal, values) => terminal.args.map(arg => arg.replace(/\{(dir|shell|command)\}/g, (_, name) => values[name]))
 
-module.exports = { load, save, home, expand, editors, editorArgs }
+module.exports = { load, save, home, expand, editors, editorArgs, terminalArgs }
