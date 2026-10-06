@@ -552,25 +552,81 @@ function sessionMenu(t) {
     { label: 'Copy the directory path', run: () => copyText(t.cwd, 'the directory path') },
     claudeId && { label: 'Copy the resume command', run: () => copyText(`cd ${shellQuote(t.cwd)} && claude --resume ${claudeId}`, 'the resume command') },
     '-',
-    { label: t.exited ? 'Close' : shell ? 'Close terminal…' : 'End session…', run: () => act('endSession', { id: t.id }) }
+    { label: t.exited ? 'Close' : shell ? 'Close terminal…' : 'End session…', run: () => endSession(t) }
   ].filter(Boolean).filter((item, i, list) => item !== '-' || (i > 0 && list[i - 1] !== '-' && i < list.length - 1))
 }
 
-let menuItems = []
-
-function showMenu(items) {
-  menuItems = items
-  window.atelier.menu(items.map((item, i) => item === '-' ? null : { id: i, label: item.label }))
+async function endSession(t) {
+  const shell = t.kind === 'terminal'
+  if (!t.exited && !await ask({
+    message: shell ? `Close ${t.label}?` : `End the Claude session on ${t.label}?`,
+    detail: 'Its split panes close with it.',
+    confirm: shell ? 'Close terminal' : 'End session',
+    cancel: 'Keep it running'
+  })) return
+  act('closeTerminal', { id: t.id })
 }
 
-window.atelier.onMenuPick(id => menuItems[id]?.run?.())
+let closeMenu = () => {}
+
+function showMenu(items, x, y) {
+  closeMenu()
+  const returnFocus = document.activeElement
+  const menu = document.createElement('div')
+  menu.className = 'menu'
+  menu.popover = 'manual'
+  menu.tabIndex = -1
+  menu.setAttribute('role', 'menu')
+  menu.innerHTML = items.map((item, i) => item === '-' ? '<div role="separator"></div>'
+    : `<button role="menuitem" tabindex="-1" data-item="${i}">${esc(item.label)}</button>`).join('')
+  const outside = event => {
+    if (!menu.contains(event.target)) closeMenu()
+  }
+  closeMenu = () => {
+    closeMenu = () => {}
+    document.removeEventListener('pointerdown', outside, true)
+    const hadFocus = menu.contains(document.activeElement)
+    menu.remove()
+    if (hadFocus) returnFocus?.focus()
+  }
+  document.addEventListener('pointerdown', outside, true)
+  menu.addEventListener('click', event => {
+    const button = event.target.closest('[data-item]')
+    if (!button) return
+    closeMenu()
+    items[button.dataset.item].run()
+  })
+  menu.addEventListener('mouseover', event => event.target.closest('[data-item]')?.focus())
+  menu.addEventListener('keydown', event => {
+    if (event.key === 'Escape' || event.key === 'Tab') {
+      event.preventDefault()
+      closeMenu()
+      return
+    }
+    const buttons = [...menu.querySelectorAll('[data-item]')]
+    const n = buttons.length
+    const i = buttons.indexOf(document.activeElement)
+    const target = { ArrowDown: (i + 1) % n, ArrowUp: i < 1 ? n - 1 : i - 1, Home: 0, End: n - 1 }[event.key]
+    if (target === undefined) return
+    event.preventDefault()
+    buttons[target].focus()
+  })
+  document.body.append(menu)
+  menu.showPopover()
+  const { width, height } = menu.getBoundingClientRect()
+  menu.style.left = `${Math.max(4, Math.min(x, innerWidth - width - 4))}px`
+  menu.style.top = `${Math.max(4, Math.min(y, innerHeight - height - 4))}px`
+  menu.focus()
+}
+
+window.addEventListener('blur', () => closeMenu())
 
 document.addEventListener('contextmenu', event => {
   const el = event.target.closest('[data-act="open-session"]')
   const terminal = el && ui.state?.terminals.find(t => t.id === el.dataset.id)
   if (!terminal) return
   event.preventDefault()
-  showMenu(sessionMenu(terminal))
+  showMenu(sessionMenu(terminal), event.clientX, event.clientY)
 })
 
 function editorAction(state, terminal) {
@@ -739,7 +795,7 @@ Object.assign(handlers, {
 })
 
 document.addEventListener('keydown', event => {
-  if (chord(event) !== 'ctrl+shift+l' || event.target.closest('.xterm')) return
+  if (chord(event) !== 'ctrl+shift+l' || event.target.closest('.xterm, .menu, dialog')) return
   event.preventDefault()
   if (view.active) showList()
   else if (view.last && ui.state?.terminals.some(t => t.id === view.last)) openSession(view.last)

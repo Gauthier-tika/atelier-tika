@@ -6,8 +6,8 @@ contextBridge.exposeInMainWorld('atelier', {
   onOpenView: callback => ipcRenderer.on('open-view', (_event, id) => callback(id)),
   ready: () => ipcRenderer.send('ready'),
   view: (name, id) => ipcRenderer.send('view', name, id),
-  menu: items => ipcRenderer.send('menu', items),
-  onMenuPick: callback => ipcRenderer.on('menu-pick', (_event, id) => callback(id)),
+  onConfirmQuit: callback => ipcRenderer.on('confirm-quit', (_event, running) => callback(running)),
+  quit: () => ipcRenderer.send('quit'),
   term: {
     input: (id, data) => ipcRenderer.send('term-input', id, data),
     resize: (id, cols, rows) => ipcRenderer.send('term-resize', id, cols, rows),

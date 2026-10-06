@@ -802,6 +802,28 @@ function toast(message, isError = false) {
   toastTimer = setTimeout(() => el.classList.remove('show'), isError ? 6000 : 3000)
 }
 
+function ask({ message, detail, confirm, cancel }) {
+  const dialog = document.createElement('dialog')
+  dialog.className = 'ask'
+  dialog.innerHTML = `<form method="dialog">
+      <p class="message">${esc(message)}</p>
+      ${detail ? `<p class="detail">${esc(detail)}</p>` : ''}
+      <div class="actions">
+        <button class="btn quiet" value="cancel" autofocus>${esc(cancel)}</button>
+        <button class="btn primary" value="confirm">${esc(confirm)}</button>
+      </div>
+    </form>`
+  dialog.addEventListener('click', event => {
+    if (event.target === dialog) dialog.close()
+  })
+  document.body.append(dialog)
+  dialog.showModal()
+  return new Promise(resolve => dialog.addEventListener('close', () => {
+    dialog.remove()
+    resolve(dialog.returnValue === 'confirm')
+  }))
+}
+
 async function act(name, payload, busyKey) {
   if (busyKey) {
     if (ui.busy.has(busyKey)) return null
@@ -994,6 +1016,7 @@ document.addEventListener('submit', async event => {
 })
 
 document.addEventListener('keydown', event => {
+  if (event.target.closest('.menu, dialog')) return
   if (event.target.closest('.xterm') || document.body.dataset.view === 'session') {
     if (event.key === 'Escape' && ui.confirm && !event.target.closest('.xterm')) handlers.cancel()
     return
@@ -1034,6 +1057,20 @@ window.atelier.onState(state => {
   if (/^qualif-/.test(ui.confirm?.type) && !state.qualifs.items.some(q => q.number === ui.confirm.number)) ui.confirm = null
   if (ui.confirm?.type === 'rebase' && !state.tickets.some(t => t.key === ui.confirm.key && t.rebasable)) ui.confirm = null
   render()
+})
+
+let askingToQuit = false
+window.atelier.onConfirmQuit(async running => {
+  if (askingToQuit) return
+  askingToQuit = true
+  const quit = await ask({
+    message: running === 1 ? 'A Claude session is still running in Atelier' : `${running} Claude sessions are still running in Atelier`,
+    detail: 'Quitting ends them. You can resume them later from the ticket list.',
+    confirm: 'Quit and end them',
+    cancel: 'Keep Atelier open'
+  })
+  askingToQuit = false
+  if (quit) window.atelier.quit()
 })
 
 renderNav()

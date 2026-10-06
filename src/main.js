@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, clipboard, dialog, Menu } = require('electron')
+const { app, BrowserWindow, ipcMain, clipboard, Menu } = require('electron')
 const path = require('node:path')
 const configModule = require('./config')
 const { Jira } = require('./jira')
@@ -37,6 +37,7 @@ const data = {
 }
 
 let win = null
+let quitting = false
 
 const send = (channel, ...args) => {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
@@ -309,25 +310,6 @@ const actions = {
     push()
   },
 
-  endSession({ id }) {
-    const terminal = terminals.get(id)
-    if (!terminal) return
-    if (!terminal.exited) {
-      const shell = terminal.kind === 'terminal'
-      const choice = dialog.showMessageBoxSync(win, {
-        type: 'question',
-        buttons: [shell ? 'Close terminal' : 'End session', 'Keep it running'],
-        defaultId: 1,
-        cancelId: 1,
-        message: shell ? `Close ${terminal.label}?` : `End the Claude session on ${terminal.label}?`,
-        detail: 'Its split panes close with it.'
-      })
-      if (choice === 1) return
-    }
-    terminals.close(id)
-    push()
-  },
-
   splitShell({ parent }) {
     return { pane: terminals.spawnShell(parent).id }
   },
@@ -464,10 +446,10 @@ ipcMain.on('view', (_event, view, id) => {
   if (markOpenSessionSeen()) push()
   tagWindow(view === 'session')
 })
-ipcMain.on('menu', (event, items) => {
-  Menu.buildFromTemplate(items.map(item => item
-    ? { label: item.label, click: () => send('menu-pick', item.id) }
-    : { type: 'separator' })).popup({ window: BrowserWindow.fromWebContents(event.sender) })
+ipcMain.on('quit', () => {
+  quitting = true
+  terminals.killAll()
+  win?.close()
 })
 ipcMain.handle('clipboard-read', () => clipboard.readText())
 ipcMain.handle('clipboard-write', (_event, text) => clipboard.writeText(String(text)))
@@ -516,18 +498,11 @@ function createWindow() {
     }
   })
   win.on('close', event => {
+    if (quitting || win.webContents.isCrashed()) return terminals.killAll()
     const running = terminals.running()
     if (!running.length) return
-    const choice = dialog.showMessageBoxSync(win, {
-      type: 'question',
-      buttons: ['Quit and end them', 'Keep Atelier open'],
-      defaultId: 1,
-      cancelId: 1,
-      message: running.length === 1 ? 'A Claude session is still running in Atelier' : `${running.length} Claude sessions are still running in Atelier`,
-      detail: 'Quitting ends them. You can resume them later from the ticket list.'
-    })
-    if (choice === 1) event.preventDefault()
-    else terminals.killAll()
+    event.preventDefault()
+    send('confirm-quit', running.length)
   })
   win.loadFile(path.join(__dirname, 'renderer/index.html'), { query: config.theme ? { theme: config.theme } : {} })
 
