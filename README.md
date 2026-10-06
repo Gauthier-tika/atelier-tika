@@ -95,7 +95,7 @@ Atelier lists as repositories the folders right inside `devDir` that hold a `.gi
 | `ATELIER_SHOT` | Save a screenshot to this path (`npm run shot`) |
 | `ATELIER_SHOT_TAB`, `ATELIER_SHOT_SESSION` | Tab or session to show in that screenshot |
 
-`npm run shot:demo` regenerates `demo/screenshot.png` from the made-up tickets, PRs and sessions in `demo/shot.js`, without calling Jira or GitHub.
+`npm run shot:demo` regenerates `demo/screenshot.png` from the made-up tickets, PRs and sessions in `demo/fixture.js`, without calling Jira or GitHub. `npm test` runs the tests in `test/` against the same data.
 
 ### Jira
 

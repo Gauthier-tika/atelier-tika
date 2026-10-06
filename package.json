@@ -6,6 +6,7 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron . --ozone-platform-hint=auto",
+    "test": "node --test",
     "shot": "ATELIER_SHOT=/tmp/atelier.png electron . --ozone-platform-hint=auto",
     "shot:demo": "ATELIER_WIDTH=1400 ATELIER_HEIGHT=860 electron demo/shot.js --ozone-platform-hint=auto"
   },
