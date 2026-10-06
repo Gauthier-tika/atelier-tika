@@ -167,7 +167,7 @@ When a qualif holds a single pull request and a workflow is set, Atelier skips t
 
 ### Theme
 
-Pick a theme under **Settings**, Atelier, [Nord](https://www.nordtheme.com) or Light. It applies to the app and its terminals at once, and is saved as `"theme"` in `~/.config/atelier/config.json`.
+Pick a theme under **Settings**, Atelier, [Nord](https://www.nordtheme.com), Light, one of the four [Catppuccin](https://catppuccin.com) flavours (Latte, Frappé, Macchiato, Mocha) or [Dracula](https://draculatheme.com). It applies to the app and its terminals at once, and is saved as `"theme"` in `~/.config/atelier/config.json`.
 
 ### Editor
 

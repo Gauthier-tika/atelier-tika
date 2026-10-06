@@ -18,7 +18,16 @@ const { Runs, dir: runsDir } = require('./runs')
 
 app.setName('atelier')
 const config = configModule.load()
-const THEMES = { default: '#212337', nord: '#2e3440', light: '#f4f5f9' }
+const THEMES = {
+  default: '#212337',
+  nord: '#2e3440',
+  light: '#f4f5f9',
+  latte: '#eff1f5',
+  frappe: '#303446',
+  macchiato: '#24273a',
+  mocha: '#1e1e2e',
+  dracula: '#282a36'
+}
 const jira = new Jira(config)
 const timer = new Timer()
 const shotPath = process.env.ATELIER_SHOT

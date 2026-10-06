@@ -90,6 +90,115 @@
   color-scheme: light;
 }
 
+/* Catppuccin (catppuccin.com), its four flavours */
+:root[data-theme="latte"] {
+  --sidebar: #e6e9ef;
+  --bg: #eff1f5;
+  --band: #ebedf2;
+  --raised: #ffffff;
+  --hover: #e2e5ec;
+  --line: #ccd0da;
+  --surface: #ccd0da;
+  --selection: #bcc0cc;
+  --muted: #9ca0b0;
+  --comment: #7c7f93;
+  --fg: #4c4f69;
+  --bright: #2c2e3f;
+  --purple: #8839ef;
+  --cyan: #209fb5;
+  --green: #40a02b;
+  --sand: #df8e1d;
+  --orange: #fe640b;
+  --red: #d20f39;
+
+  color-scheme: light;
+}
+
+:root[data-theme="frappe"] {
+  --sidebar: #292c3c;
+  --bg: #303446;
+  --band: #33374a;
+  --raised: #363a4d;
+  --hover: #3a3e51;
+  --line: #414559;
+  --surface: #414559;
+  --selection: #51576d;
+  --muted: #737994;
+  --comment: #838ba7;
+  --fg: #c6d0f5;
+  --bright: #e3e8fa;
+  --purple: #ca9ee6;
+  --cyan: #99d1db;
+  --green: #a6d189;
+  --sand: #e5c890;
+  --orange: #ef9f76;
+  --red: #e78284;
+}
+
+:root[data-theme="macchiato"] {
+  --sidebar: #1e2030;
+  --bg: #24273a;
+  --band: #282b3e;
+  --raised: #2a2e41;
+  --hover: #2f3247;
+  --line: #363a4f;
+  --surface: #363a4f;
+  --selection: #494d64;
+  --muted: #6e738d;
+  --comment: #8087a2;
+  --fg: #cad3f5;
+  --bright: #e5e9fa;
+  --purple: #c6a0f6;
+  --cyan: #91d7e3;
+  --green: #a6da95;
+  --sand: #eed49f;
+  --orange: #f5a97f;
+  --red: #ed8796;
+}
+
+:root[data-theme="mocha"] {
+  --sidebar: #181825;
+  --bg: #1e1e2e;
+  --band: #222232;
+  --raised: #252536;
+  --hover: #292a3b;
+  --line: #313244;
+  --surface: #313244;
+  --selection: #45475a;
+  --muted: #6c7086;
+  --comment: #7f849c;
+  --fg: #cdd6f4;
+  --bright: #e6eaf9;
+  --purple: #cba6f7;
+  --cyan: #89dceb;
+  --green: #a6e3a1;
+  --sand: #f9e2af;
+  --orange: #fab387;
+  --red: #f38ba8;
+}
+
+/* Dracula (draculatheme.com) */
+:root[data-theme="dracula"] {
+  --sidebar: #21222c;
+  --bg: #282a36;
+  --band: #2e303d;
+  --raised: #323443;
+  --hover: #393b4c;
+  --line: #3d4051;
+  --surface: #44475a;
+  --selection: #44475a;
+  --muted: #535d7f;
+  --comment: #6272a4;
+  --fg: #f8f8f2;
+  --bright: #ffffff;
+  --purple: #bd93f9;
+  --cyan: #8be9fd;
+  --green: #50fa7b;
+  --sand: #f1fa8c;
+  --orange: #ffb86c;
+  --red: #ff5555;
+}
+
 * { box-sizing: border-box; }
 
 html, body {
