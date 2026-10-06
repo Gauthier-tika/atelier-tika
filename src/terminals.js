@@ -16,7 +16,7 @@ class Terminals {
   }
 
   list() {
-    return [...this.items.values()].map(({ pty: _pty, output: _output, offset: _offset, sizes: _sizes, ...item }) => item)
+    return [...this.items.values()].map(({ pty: _pty, chunks: _chunks, length: _length, offset: _offset, sizes: _sizes, ...item }) => item)
   }
 
   running() {
@@ -43,17 +43,18 @@ class Terminals {
     })
     const item = {
       id, key, prId, runId, label, cwd, kind, parent, pid: child.pid, startedAt: Date.now(), exited: false, exitCode: null,
-      pty: child, output: '', offset: 0, sizes: [{ at: 0, ...this.size }]
+      pty: child, chunks: [], length: 0, offset: 0, sizes: [{ at: 0, ...this.size }]
     }
     this.items.set(id, item)
     child.onData(data => {
-      item.output += data
-      const excess = item.output.length - SCROLLBACK_BYTES
-      if (excess > 0) {
-        item.output = item.output.slice(excess)
-        item.offset += excess
-        while (item.sizes.length > 1 && item.sizes[1].at <= item.offset) item.sizes.shift()
+      item.chunks.push(data)
+      item.length += data.length
+      while (item.length - item.chunks[0].length >= SCROLLBACK_BYTES) {
+        const dropped = item.chunks.shift().length
+        item.length -= dropped
+        item.offset += dropped
       }
+      while (item.sizes.length > 1 && item.sizes[1].at <= item.offset) item.sizes.shift()
       this.queue(id, data)
     })
     child.onExit(({ exitCode }) => {
@@ -83,7 +84,7 @@ class Terminals {
   replay(id) {
     const item = this.items.get(id)
     if (!item) return { output: '', sizes: [] }
-    return { output: item.output, sizes: item.sizes.map(size => ({ ...size, at: Math.max(0, size.at - item.offset) })) }
+    return { output: item.chunks.join(''), sizes: item.sizes.map(size => ({ ...size, at: Math.max(0, size.at - item.offset) })) }
   }
 
   write(id, data) {
@@ -96,7 +97,7 @@ class Terminals {
     if (!item || item.exited || cols <= 1 || rows <= 1) return
     item.pty.resize(cols, rows)
     const last = item.sizes.at(-1)
-    if (last.cols !== cols || last.rows !== rows) item.sizes.push({ at: item.offset + item.output.length, cols, rows })
+    if (last.cols !== cols || last.rows !== rows) item.sizes.push({ at: item.offset + item.length, cols, rows })
   }
 
   setSize(cols, rows) {

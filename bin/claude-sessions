@@ -184,6 +184,10 @@ def terminal_focused(session):
     return not session.get("title") or session["title"] in active.get("title", "")
 
 
+def without_updated(session):
+    return {key: value for key, value in session.items() if key != "updated"}
+
+
 def hook():
     try:
         payload = json.load(sys.stdin)
@@ -203,6 +207,7 @@ def hook():
 
     now = time.time()
     session = load(path) or {"id": session_id, "status": "idle", "prompt": "", "title": "", "seen": True, "since": now}
+    previous = dict(session)
     cwd = payload.get("cwd") or session.get("cwd", "")
     session.update({
         "cwd": cwd,
@@ -242,6 +247,8 @@ def hook():
         session["seen"] = terminal_focused(session)
     elif status != "done":
         session["seen"] = True
+    if without_updated(session) == without_updated(previous) and now - previous.get("updated", 0) < 60:
+        return
     save(session)
 
 

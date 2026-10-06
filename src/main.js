@@ -63,6 +63,7 @@ const schedulePush = () => {
   if (!pushTimer) pushTimer = setTimeout(() => { pushTimer = null; push() }, 150)
 }
 const qualifs = new Qualifs(schedulePush, config.qualif)
+qualifs.onOutput = (number, chunk) => send('qualif-output', number, chunk)
 const runs = new Runs(schedulePush)
 terminals.onExit = item => { if (item.runId) runs.terminalExited(item.id) }
 
@@ -210,9 +211,14 @@ const loaders = {
   time: () => load('time', () => jira.week(), result => { data.time = result })
 }
 
+let pastAt = 0
+
 async function refreshClaude() {
   data.live = await claude.live(config)
-  data.past = claude.past()
+  if (Date.now() - pastAt > 30000 || data.live.some(session => !data.past.some(p => p.id === session.id))) {
+    data.past = claude.past()
+    pastAt = Date.now()
+  }
   markOpenSessionSeen()
   schedulePush()
 }

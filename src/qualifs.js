@@ -101,7 +101,7 @@ class Qualifs {
 
     const append = chunk => {
       run.output = (run.output + chunk).slice(-OUTPUT_BYTES)
-      this.onChange()
+      this.onOutput?.(run.number, chunk)
     }
     const step = ([command, args]) => new Promise(resolve => {
       append(`$ ${command} ${args.join(' ')}\n`)

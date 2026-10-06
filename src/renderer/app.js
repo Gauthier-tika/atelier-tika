@@ -1678,6 +1678,15 @@ window.atelier.onState(state => {
   render()
 })
 
+window.atelier.onQualifOutput((number, chunk) => {
+  const item = ui.state?.qualifs?.items.find(q => q.number === number)
+  if (item?.current) item.current.output += chunk
+  const pre = document.querySelector(`[data-qualif="${number}"] pre`)
+  if (!pre) return
+  pre.textContent += chunk
+  pre.scrollTop = pre.scrollHeight
+})
+
 let askingToQuit = false
 window.atelier.onConfirmQuit(async running => {
   if (askingToQuit) return

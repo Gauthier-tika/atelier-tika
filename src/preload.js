@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('atelier', {
   action: (name, payload) => ipcRenderer.invoke('action', name, payload),
   onState: callback => ipcRenderer.on('state', (_event, state) => callback(state)),
   onOpenView: callback => ipcRenderer.on('open-view', (_event, id) => callback(id)),
+  onQualifOutput: callback => ipcRenderer.on('qualif-output', (_event, number, chunk) => callback(number, chunk)),
   ready: () => ipcRenderer.send('ready'),
   view: (name, id) => ipcRenderer.send('view', name, id),
   onConfirmQuit: callback => ipcRenderer.on('confirm-quit', (_event, running) => callback(running)),
