@@ -103,7 +103,7 @@ Atelier lists as repositories the folders right inside `devDir` that hold a `.gi
 
 `npm run shot:demo` regenerates `demo/screenshot.png` from the made-up tickets, PRs and sessions in `demo/shot.js`, without calling Jira or GitHub.
 
-Pick a theme under **Settings**, Atelier or [Nord](https://www.nordtheme.com). It applies to the app and its terminals at once, and is saved as `"theme"` in `~/.config/atelier/config.json`.
+Pick a theme under **Settings**, Atelier, [Nord](https://www.nordtheme.com) or Light. It applies to the app and its terminals at once, and is saved as `"theme"` in `~/.config/atelier/config.json`.
 
 ### Editor
 

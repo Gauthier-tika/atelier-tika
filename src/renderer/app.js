@@ -417,7 +417,8 @@ function runList(state) {
 
 const THEMES = [
   { id: 'default', label: 'Atelier', swatches: ['#212337', '#282a42', '#9b90f4', '#8acfef', '#13be76', '#e8c59b', '#f97171'] },
-  { id: 'nord', label: 'Nord', swatches: ['#2e3440', '#3b4252', '#81a1c1', '#88c0d0', '#a3be8c', '#ebcb8b', '#bf616a'] }
+  { id: 'nord', label: 'Nord', swatches: ['#2e3440', '#3b4252', '#81a1c1', '#88c0d0', '#a3be8c', '#ebcb8b', '#bf616a'] },
+  { id: 'light', label: 'Light', swatches: ['#f4f5f9', '#ffffff', '#5b4fd1', '#1d7fa3', '#0b8a55', '#9a6b1c', '#c93a3a'] }
 ]
 
 function renderSettings(state) {

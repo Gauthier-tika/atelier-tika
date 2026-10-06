@@ -48,7 +48,33 @@ const nordTerminalTheme = {
   brightWhite: '#eceff4'
 }
 
-const terminalTheme = () => document.documentElement.dataset.theme === 'nord' ? nordTerminalTheme : defaultTerminalTheme
+const lightTerminalTheme = {
+  background: '#f4f5f9',
+  foreground: '#2f3347',
+  cursor: '#2f3347',
+  cursorAccent: '#f4f5f9',
+  selectionBackground: '#c8d1e6',
+  selectionForeground: '#15182a',
+  black: '#2f3347',
+  red: '#c93a3a',
+  green: '#0b8a55',
+  yellow: '#9a6b1c',
+  blue: '#5b4fd1',
+  magenta: '#b04d85',
+  cyan: '#1d7fa3',
+  white: '#d9dde8',
+  brightBlack: '#69708a',
+  brightRed: '#c93a3a',
+  brightGreen: '#0b8a55',
+  brightYellow: '#9a6b1c',
+  brightBlue: '#5b4fd1',
+  brightMagenta: '#b04d85',
+  brightCyan: '#1d7fa3',
+  brightWhite: '#ffffff'
+}
+
+const terminalThemes = { nord: nordTerminalTheme, light: lightTerminalTheme }
+const terminalTheme = () => terminalThemes[document.documentElement.dataset.theme] || defaultTerminalTheme
 
 function applyTerminalTheme() {
   for (const pane of view.panes.values()) pane.term.options.theme = terminalTheme()
