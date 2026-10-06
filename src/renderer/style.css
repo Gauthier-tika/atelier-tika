@@ -1413,6 +1413,86 @@ body:not([data-view="list"]) .panes { display: none; }
   .column { width: 11ch; }
 }
 
+/* Workflow runs */
+
+.launch-workflows {
+  display: grid;
+  gap: 4px;
+}
+
+.launch-workflows .tool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--selection);
+  color: var(--fg);
+  font-size: var(--step--1);
+  text-align: left;
+  min-width: 0;
+}
+
+.launch-workflows .tool:hover { background: var(--raised); }
+.launch-workflows .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.launch-workflows button > :is(.t, .state) { text-box: normal; }
+.launch-workflows .state { color: var(--purple); flex: none; }
+
+.run {
+  display: grid;
+  gap: 8px;
+  padding: 14px var(--gutter);
+  border-bottom: 1px solid var(--line);
+}
+
+.run.live { background: color-mix(in srgb, var(--purple) 5%, transparent); }
+
+.run-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.run-head > .glyph { color: var(--comment); }
+.pane .run-head h3 { margin: 0; font-size: var(--step-0); color: var(--bright); }
+.run-head .key { color: var(--cyan); flex: none; }
+.run-head .key:is(button):hover { text-decoration: underline; text-underline-offset: 3px; }
+
+.run-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.run-stage {
+  display: flex;
+  gap: 10px;
+  margin: 0;
+  color: var(--fg);
+  min-width: 0;
+}
+
+.run-stage > :first-child { color: var(--comment); flex: none; font-size: var(--step--1); }
+
+.run-question .question { flex-basis: 100%; white-space: pre-wrap; }
+
+.run-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  font-size: var(--step--1);
+  color: var(--comment);
+}
+
+.run-tag.purple { color: var(--purple); }
+.run-tag.sand { color: var(--sand); }
+.run-tag.green { color: var(--green); }
+.run-tag.red { color: var(--red); }
+
 @media (max-width: 1400px) {
   .ticket .type { display: none; }
   .clock .what .summary { max-width: 24ch; }
@@ -1434,7 +1514,7 @@ body:not([data-view="list"]) .panes { display: none; }
   .brand::before { content: "A"; font-size: var(--step-2); }
   .nav button, .nav button.sub { grid-template-columns: 1fr; justify-items: center; padding: 9px 0; }
   .nav button.sub .glyph { width: 14px; height: 14px; }
-  .nav .t, .launch .repo, .launch-claude .t, .launch-tools .t, .session-list :is(.name, .state, .detail), .nav-sessions h2 { display: none; }
+  .nav .t, .launch .repo, .launch-claude .t, .launch-tools .t, .launch-workflows :is(.t, .state), .session-list :is(.name, .state, .detail), .nav-sessions h2 { display: none; }
   .nav .count { position: absolute; top: 2px; right: 4px; font-size: 10px; }
   .session-list button { grid-template-columns: 1fr; justify-items: center; padding: 9px 0; }
   .launch { padding: 10px 6px; }

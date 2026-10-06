@@ -30,6 +30,7 @@ const G = {
   server: svg('<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01"/><path d="M6 18h.01"/>'),
   folder: svg('<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>'),
   settings: svg('<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>'),
+  workflow: svg('<rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/>'),
   eye: svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>')
 }
 
@@ -313,6 +314,7 @@ function ticketRow(ticket, columns) {
     <div class="head">
       <button class="key code" data-act="open-url" data-url="${esc(ticket.url)}" title="Open ${esc(ticket.key)} in Jira">${esc(ticket.key)}</button>
       <span class="summary" title="${esc(ticket.summary)}">${esc(ticket.summary)}</span>
+      ${runTag(ticket)}
       ${ticket.verification ? `<span class="verification" title="Vérification: ${esc(ticket.verification)}">${esc(ticket.verification)}</span>` : ''}
       <span class="type">${esc(ticket.type)}</span>
       ${timeCell(ticket)}
@@ -331,6 +333,75 @@ function ticketRow(ticket, columns) {
     </div>
     ${confirmRow(ticket, columns)}
   </article>`
+}
+
+/* Workflow runs */
+
+const LIVE_RUN = ['starting', 'running', 'waiting']
+
+function runLook(run) {
+  return {
+    starting: ['purple', 'Starting'],
+    running: ['purple', 'Running'],
+    waiting: ['sand', 'Needs you'],
+    done: ['green', 'Done'],
+    skipped: ['', 'Skipped'],
+    failed: ['red', 'Failed'],
+    ended: ['', 'Ended']
+  }[run.status] || ['', run.status]
+}
+
+function runTag(ticket) {
+  if (!ticket.run) return ''
+  const [color, label] = runLook(ticket.run)
+  return `<span class="run-tag ${color}" title="${esc(`Taken by the ${ticket.run.label} workflow: ${label}`)}"><span class="glyph">${G.workflow}</span>Workflow</span>`
+}
+
+function runPr(state, run) {
+  if (!run.pr) return ''
+  const pr = [...state.tickets.flatMap(t => [t.pr, ...t.otherPrs]), ...state.loosePrs].find(p => p?.url === run.pr)
+  if (pr) return prChip(pr)
+  const number = run.pr.match(/\/pull\/(\d+)/)?.[1]
+  return `<button class="chip pr-chip" data-act="open-url" data-url="${esc(run.pr)}" title="Open the pull request on GitHub">
+    <span class="glyph">${G.draft}</span><span class="label">Pull request</span>${number ? `<span class="code">#${number}</span>` : ''}</button>`
+}
+
+function runQuestion(run) {
+  if (!run.question) return ''
+  const busy = ui.busy.has(`run:${run.id}`)
+  return `<div class="confirm run-question">
+    <span class="question">${esc(run.question.text)}</span>
+    ${run.question.options.map((option, i) => `<button class="btn ${i ? 'quiet' : 'primary'}" data-act="run-answer" data-id="${esc(run.id)}" data-option="${esc(option)}" ${busy || !run.open ? 'disabled' : ''}>${esc(option)}</button>`).join('')}
+  </div>`
+}
+
+function runCard(state, run) {
+  const [color, label] = runLook(run)
+  const live = LIVE_RUN.includes(run.status)
+  const ticket = run.ticket && [...state.tickets, ...state.unassigned].find(t => t.key === run.ticket)
+  const since = run.stageSince || run.startedAt
+  const line = live ? run.stage || 'Starting Claude…' : run.message || run.stage || ''
+  return `<article class="run ${live ? 'live' : ''}" data-run="${esc(run.id)}">
+    <div class="run-head">
+      <span class="glyph">${G.workflow}</span>
+      <h3>${esc(run.label)}</h3>
+      <span class="chip ${color}"><span class="label">${esc(label)}</span></span>
+      ${run.ticket ? ticket ? `<button class="key code" data-act="open-url" data-url="${esc(ticket.url)}" title="${esc(ticket.summary)}">${esc(run.ticket)}</button>` : `<span class="key code">${esc(run.ticket)}</span>` : ''}
+      ${runPr(state, run)}
+      <span class="run-actions">
+        ${run.open ? `<button class="btn quiet" data-act="open-session" data-id="${esc(run.terminal)}"><span class="glyph">${G.terminal}</span><span class="t">Open the session</span></button>` : ''}
+        ${live ? '' : `<button class="unassign" data-act="run-dismiss" data-id="${esc(run.id)}" title="Remove this run from the list" aria-label="Remove this run from the list"><span class="glyph">${G.cross}</span></button>`}
+      </span>
+    </div>
+    ${line ? `<p class="run-stage">${live ? `<span class="code" data-since="${since}">${clockText(Date.now() - since)}</span>` : `<span class="meta">${ago(run.finishedAt || run.updated || run.startedAt)}</span>`}<span>${esc(line)}</span></p>` : ''}
+    ${runQuestion(run)}
+  </article>`
+}
+
+function runList(state) {
+  const shown = state.runs.filter(run => !run.dismissed)
+  if (!shown.length) return ''
+  return `${shown.map(run => runCard(state, run)).join('')}<h3>Tickets</h3>`
 }
 
 /* Panes */
@@ -390,7 +461,12 @@ function renderLaunch(state) {
       <button class="tool" data-act="shell-repo" title="Open a plain terminal, without Claude, in ${esc(repo)}"><span class="glyph">${G.terminal}</span><span class="t">Terminal</span></button>
       <button class="tool" data-act="editor-repo" title="Open ${esc(state.editor.name)} in ${esc(repo)}"><span class="glyph">${G.edit}</span><span class="t">${esc(state.editor.name)}</span></button>
       ${state.sapling ? `<button class="tool" data-act="sl-web" title="Show Sapling Web (sl web) on ${esc(repo)} inside Atelier" ${starting ? 'disabled' : ''}><span class="glyph">${G.smartlog}</span><span class="t">${starting ? 'Starting…' : 'sl web'}</span></button>` : ''}
-    </div>`
+    </div>
+    ${state.workflows.length ? `<div class="launch-workflows">${state.workflows.map(w => {
+      const live = state.runs.some(run => run.workflow === w.id && LIVE_RUN.includes(run.status))
+      return `<button class="tool" data-act="workflow-run" data-id="${esc(w.id)}" title="${esc(live ? `Open the running ${w.label}` : w.description || `Start ${w.label}`)}">
+        <span class="glyph">${G.workflow}</span><span class="t">${esc(w.label)}</span>${live ? '<span class="state">Running</span>' : ''}</button>`
+    }).join('')}</div>` : ''}`
 }
 
 const NAV = [
@@ -430,6 +506,7 @@ function renderMine(state) {
   if (!mine.length) {
     parts.push(`<p class="empty">${state.loading.jira ? 'Loading your Jira tickets…' : state.tickets.length ? 'Your other tickets wait for a release.' : 'Nothing is assigned to you outside Done.'}</p>`)
   }
+  parts.push(runList(state))
   parts.push(ticketList(mine, state.columns))
 
   if (state.loosePrs.length) {
@@ -444,7 +521,7 @@ function renderMine(state) {
     }).join(''))
   }
 
-  const repoTerminals = state.terminals.filter(t => t.kind === 'claude' && !t.key && !t.prId && !t.exited)
+  const repoTerminals = state.terminals.filter(t => t.kind === 'claude' && !t.key && !t.prId && !t.runId && !t.exited)
   const outside = state.looseSessions.filter(s => !s.embedded)
   if (repoTerminals.length || outside.length) {
     parts.push(`<h3>Claude sessions without a ticket <span class="count">${repoTerminals.length + outside.length}</span></h3>`)
@@ -887,6 +964,9 @@ const handlers = {
   'claude-new': el => act('claudeOpen', { key: el.dataset.key, fresh: true }),
   'focus-session': el => act('focusSession', { id: el.dataset.id }),
   'review-claude': el => act('reviewWithClaude', { id: el.dataset.id }),
+  'workflow-run': el => act('workflowRun', { id: el.dataset.id }, `workflow:${el.dataset.id}`),
+  'run-answer': el => act('runAnswer', { id: el.dataset.id, option: el.dataset.option }, `run:${el.dataset.id}`),
+  'run-dismiss': el => act('runDismiss', { id: el.dataset.id }),
   'ask-move': el => {
     ui.confirm = { type: 'move', key: el.dataset.key, station: Number(el.dataset.station) }
     render()

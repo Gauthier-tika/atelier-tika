@@ -13,6 +13,7 @@ It is built for one setup (Linux with Hyprland, Ghostty and Sapling) and is not 
 - **Splits**: Ghostty-style panes inside a session. **Open nvim** puts nvim, or the [editor](#editor) you set, on the left of Claude, and extra shells split beside it. A pane closes when its program exits.
 - **PRs and reviews**: GitHub PRs and their checks, rebase a ticket's PR, start a Claude review of a PR.
 - **Qualifs**: which qualif environment holds which ticket, sync the Jira Qualif field, clear a qualif's caches.
+- **Workflows**: start a Claude Code run from a button, follow its stages, answer its questions from Atelier and see its outcome and pull request. See [Workflows](#workflows).
 - **Repo tools**: open Claude, a shell or your editor in any repo under `~/Dev` (`devDir`), and `sl web` when Sapling is installed.
 
 ## Requirements
@@ -52,6 +53,7 @@ ln -s "$PWD/bin/atelier" ~/.local/bin/atelier
 | `bin/atelier` | Launcher |
 | `bin/claude-sessions` | Tracks running Claude sessions through Claude Code hooks, lists them and focuses their window |
 | `bin/jira-time` | Reads the week's Jira worklogs and logs time. Atelier passes it `jiraBase` and `jiraEnv` |
+| `bin/atelier-run` | Lets a workflow run report its stage, ticket, questions and outcome to Atelier |
 | `bin/qualif-sync` | Rebuilds `qualif-<github-login>-<N>` from `origin/staging` plus your PRs, pushes it and starts the deployment |
 
 Atelier only sees Claude sessions once the hook is registered. Add this to `~/.claude/settings.json` for each of `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `Stop` and `StopFailure`, with the path to your clone:
@@ -111,6 +113,32 @@ A graphical editor opens in its own window (`"mode": "window"`), and the session
 ```
 
 `name` defaults to the command's file name.
+
+## Workflows
+
+A workflow is a prompt that Atelier starts in its own Claude session, from a button under the repo picker. Atelier does not know what the prompt does: the run tells it through `atelier-run`. List them in `~/.config/atelier/config.json`:
+
+```json
+{
+  "workflows": [
+    { "id": "autopilot", "label": "Solve the next ticket", "prompt": "/ticket-autopilot", "cwd": "~/Dev/modulo", "description": "Triage, take and solve the top To Do ticket" }
+  ]
+}
+```
+
+`cwd` defaults to `repoDir`. Only one run of a workflow goes at a time: the button opens the running one.
+
+Atelier starts the session with `ATELIER_RUN_ID` and `ATELIER_RUNS_DIR` set and its `bin/` first on `PATH`, so the prompt, and the subagents it starts, can call:
+
+| Command | Effect in Atelier |
+|---|---|
+| `atelier-run stage "<text>"` | Shows the stage and how long it has run |
+| `atelier-run ticket <KEY>` | Links the run to a ticket, which shows a Workflow tag |
+| `atelier-run ask "<question>" "<option>"…` | Shows the question with one button per option. A button types the option into the session and presses Enter, so the prompt should stop and wait for that reply |
+| `atelier-run done [--pr <url>] [--message <text>]` | Marks the run done, with its pull request |
+| `atelier-run skip "<reason>"` / `atelier-run fail "<reason>"` | Marks the run skipped or failed |
+
+Outside Atelier, `atelier-run` records nothing and exits 0, so a prompt can call it unconditionally. Runs live in `~/.local/state/atelier/runs/<id>.json` for 14 days. A run whose session exits before `done`, `skip` or `fail` shows as Ended.
 
 ## Terminal shortcuts
 

@@ -79,6 +79,7 @@ function compose(data, timer, config, terminals = []) {
     const first = past.find(p => p.id === session.id)?.prompt || ''
     return { ...session, first, ...(embedded ? { embedded: embedded.id } : {}) }
   })
+  const runs = (data.runs || []).map(run => ({ ...run, open: terminals.some(t => t.id === run.terminal) }))
   const hidden = new Set(config.hiddenColumns || [])
   const claimed = new Set()
   const claimedPrs = new Set()
@@ -91,7 +92,7 @@ function compose(data, timer, config, terminals = []) {
       .filter(pr => keysOf(pr).includes(ticket.key))
       .sort((a, b) => (a.state === 'OPEN' ? 0 : 1) - (b.state === 'OPEN' ? 0 : 1) || b.updatedAt.localeCompare(a.updatedAt))
     ticketPrs.forEach(pr => claimedPrs.add(pr.id))
-    const candidates = live.filter(s => !/^(rebase|review):/.test(s.embedded || ''))
+    const candidates = live.filter(s => !/^(rebase|review|run):/.test(s.embedded || ''))
     const session = candidates.find(s => s.keys.includes(ticket.key)) ||
       candidates.find(s => past.find(p => p.id === s.id)?.keys.includes(ticket.key))
     if (session) claimed.add(session.id)
@@ -101,7 +102,8 @@ function compose(data, timer, config, terminals = []) {
     const rebasable = ticketPrs.find(p => p.state === 'OPEN' && p.repo === path.basename(config.repoDir) && p.base) || null
     const rebaseTerminal = terminals.find(t => t.id === `rebase:${ticket.key}` && !t.exited) || null
     const rebaseSession = rebaseTerminal ? live.find(s => s.embedded === rebaseTerminal.id) || null : null
-    const attention = claudeNeedsYou(session) || claudeNeedsYou(rebaseSession) || (pr && prNeedsYou(pr))
+    const run = runs.find(r => r.ticket === ticket.key) || null
+    const attention = claudeNeedsYou(session) || claudeNeedsYou(rebaseSession) || (pr && prNeedsYou(pr)) || run?.status === 'waiting'
     const group = station === inProgress ? 0 : station > inProgress ? 1 : 2
     return {
       ...ticket,
@@ -116,6 +118,7 @@ function compose(data, timer, config, terminals = []) {
       terminal,
       rebasable,
       rebase: rebaseTerminal ? { id: rebaseTerminal.id, session: rebaseSession } : null,
+      run: run && { id: run.id, label: run.label, status: run.status, terminal: run.terminal },
       attention,
       rank: [attention ? 0 : 1, group, ticket.blocked ? 1 : 0],
       time: {
@@ -173,6 +176,7 @@ function compose(data, timer, config, terminals = []) {
     terminals: terminals.map(t => ({ ...t, session: live.find(s => s.embedded === t.id) || null })),
     viewer: data.github?.viewer || null,
     qualifs: composeQualifs(data, config),
+    runs,
     time: data.time || null,
     timer: {
       running: runningKey ? { ...timer.running, summary: tickets.find(t => t.key === runningKey)?.summary || '' } : null

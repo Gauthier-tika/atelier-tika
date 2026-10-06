@@ -478,10 +478,15 @@ function showList() {
 const isEditor = t => t.id.startsWith('editor:')
 const editorPaneOpen = (state, t) => state.terminals.some(x => x.id === `${t.id}~editor` && !x.exited)
 
+const runOf = t => t.runId ? ui.state?.runs.find(r => r.id === t.runId) || null : null
+
 function sessionStatus(terminal) {
   if (terminal.exited) return ['', 'Ended']
   if (terminal.kind === 'terminal') return ['idle', isEditor(terminal) ? ui.state.editor.name : 'Shell']
+  const run = runOf(terminal)
+  if (run?.status === 'waiting') return ['sand', 'Needs you']
   const s = terminal.session
+  if (run && LIVE_RUN.includes(run.status) && s?.status === 'done') return ['purple', 'Working']
   if (!s) return ['purple', 'Starting']
   return {
     'needs-you': ['sand', 'Needs you'],
@@ -500,6 +505,8 @@ function sessionName(t) {
 
 function sessionDetail(t) {
   if (t.prId) return t.label.replace(/^Review of [^:]+: /, '')
+  const run = runOf(t)
+  if (run) return [run.ticket, run.stage].filter(Boolean).join(' · ') || 'Workflow'
   if (t.key) return t.label
   if (isEditor(t)) return ui.state.editor.name
   if (t.kind === 'terminal') return 'Terminal'
@@ -704,6 +711,7 @@ function renderSession() {
         ${review ? `<button class="btn quiet" data-act="open-url" data-url="${esc(review.url)}/files"><span class="glyph">${G.open}</span><span class="t">Open the diff</span></button>` : ''}
         ${endButton(terminal)}
       </div>
+      ${runOf(terminal) ? runQuestion(runOf(terminal)) : ''}
     </div>`
   }
   $('session-bar').innerHTML = context

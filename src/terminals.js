@@ -28,11 +28,11 @@ class Terminals {
     return this.items.get(id)
   }
 
-  spawn(id, { cwd, args = [], label, key = null, prId = null, kind = 'claude', parent = null, command = null }) {
+  spawn(id, { cwd, args = [], label, key = null, prId = null, runId = null, kind = 'claude', parent = null, command = null, env: extraEnv = {} }) {
     const existing = this.items.get(id)
     if (existing && !existing.exited) return existing
     const shell = process.env.SHELL || '/bin/zsh'
-    const childEnv = { ...env, TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'atelier' }
+    const childEnv = { ...env, ...extraEnv, TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'atelier' }
     for (const name of Object.keys(childEnv)) if (name.startsWith('ELECTRON_') || name === 'CHROME_DESKTOP') delete childEnv[name]
     const program = kind === 'claude' ? this.claudeCommand : command
     const shellArgs = program ? ['-ic', `exec ${quote(program)} ${args.map(quote).join(' ')}`] : ['-i']
@@ -43,7 +43,7 @@ class Terminals {
       cwd,
       env: childEnv
     })
-    const item = { id, key, prId, label, cwd, kind, parent, pid: child.pid, startedAt: Date.now(), exited: false, exitCode: null, pty: child, output: '' }
+    const item = { id, key, prId, runId, label, cwd, kind, parent, pid: child.pid, startedAt: Date.now(), exited: false, exitCode: null, pty: child, output: '' }
     this.items.set(id, item)
     child.onData(data => {
       item.output = (item.output + data).slice(-SCROLLBACK_BYTES)
@@ -54,6 +54,7 @@ class Terminals {
       item.exited = true
       item.exitCode = exitCode
       this.send('term-exit', id, exitCode)
+      this.onExit?.(item)
       this.onChange?.()
     })
     this.onChange?.()

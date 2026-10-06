@@ -9,10 +9,11 @@ const wm = require('./wm')
 const { Timer } = require('./timer')
 const { compose, qualifPrs } = require('./compose')
 const { Qualifs } = require('./qualifs')
-const { run, onPath } = require('./run')
+const { run, onPath, env } = require('./run')
 const rebase = require('./rebase')
 const sapling = require('./sapling')
 const { Terminals } = require('./terminals')
+const { Runs, dir: runsDir } = require('./runs')
 
 app.setName('atelier')
 const config = configModule.load()
@@ -46,9 +47,12 @@ const terminals = new Terminals(send, process.env.ATELIER_CLAUDE_BIN || config.c
 terminals.onChange = () => refreshClaude()
 
 let pushTimer = null
-const qualifs = new Qualifs(() => {
+const schedulePush = () => {
   if (!pushTimer) pushTimer = setTimeout(() => { pushTimer = null; push() }, 150)
-})
+}
+const qualifs = new Qualifs(schedulePush)
+const runs = new Runs(schedulePush)
+terminals.onExit = item => { if (item.runId) runs.terminalExited(item.id) }
 
 function repos() {
   const fs = require('node:fs')
@@ -71,7 +75,7 @@ function repoNamed(name) {
   return repo
 }
 
-const current = () => ({ ...compose({ ...data, qualifs: qualifs.list() }, timer.state, config, terminals.list()), repos: repos().map(r => r.name), sapling: data.sapling, editor: { name: config.editor.name, mode: config.editor.mode }, editors: editorChoices() })
+const current = () => ({ ...compose({ ...data, qualifs: qualifs.list(), runs: runs.list() }, timer.state, config, terminals.list()), workflows: config.workflows.map(({ id, label, description }) => ({ id, label, description: description || '' })), repos: repos().map(r => r.name), sapling: data.sapling, editor: { name: config.editor.name, mode: config.editor.mode }, editors: editorChoices() })
 
 const qualifBranches = () => data.github ? qualifs.list().map(q => `qualif-${data.github.viewer}-${q.number}`) : []
 
@@ -287,6 +291,43 @@ const actions = {
     return { view: openEditorView(`editor:${repo.name}`, repo.dir, `${config.editor.name} in ${repo.name}`) }
   },
 
+
+  workflowRun({ id }) {
+    const workflow = config.workflows.find(w => w.id === id)
+    if (!workflow) throw new Error(`No workflow ${id} in config.json`)
+    const live = runs.live(workflow.id)
+    if (live) return { view: live.terminal, message: `${workflow.label} is already running` }
+    const run = runs.create(workflow)
+    terminals.spawn(run.terminal, {
+      runId: run.id,
+      label: workflow.label,
+      cwd: workflow.cwd,
+      args: [workflow.prompt],
+      env: {
+        ATELIER_RUN_ID: run.id,
+        ATELIER_RUNS_DIR: runsDir,
+        PATH: `${path.join(__dirname, '..', 'bin')}:${env.PATH}`
+      }
+    })
+    return { view: run.terminal }
+  },
+
+  runAnswer({ id, option }) {
+    const run = runs.get(id)
+    if (!run.question?.options.includes(option)) throw new Error('That question was already answered')
+    const terminal = terminals.get(run.terminal)
+    if (!terminal || terminal.exited) throw new Error('The run session has ended')
+    runs.answered(id, run.question.asked)
+    terminals.write(run.terminal, option)
+    setTimeout(() => terminals.write(run.terminal, '\r'), 150)
+    return `Answered "${option}"`
+  },
+
+  runDismiss({ id }) {
+    const run = runs.get(id)
+    if (terminals.get(run.terminal)?.exited) terminals.close(run.terminal)
+    runs.dismiss(id)
+  },
 
   async take({ key }) {
     const item = data.unassigned?.find(t => t.key === key)
@@ -571,8 +612,10 @@ app.whenReady().then(() => {
     win.webContents.once('did-finish-load', screenshot)
     return
   }
+  runs.endLive()
   refreshAll()
   claude.watch(refreshClaude)
+  runs.watch()
   setInterval(() => { loaders.jira(); loaders.github() }, config.pollSeconds * 1000)
   setInterval(() => loaders.time(), 300000)
   setInterval(() => {

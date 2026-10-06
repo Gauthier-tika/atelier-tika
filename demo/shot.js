@@ -23,7 +23,8 @@ stub('config', {
     githubOrg: 'acme',
     repoDir: path.join(os.homedir(), 'Dev/shop'),
     repos: ['~/Dev/shop', '~/Dev/atelier', '~/Dev/infra'],
-    reviewRepos: ['shop']
+    reviewRepos: ['shop'],
+    workflows: [{ id: 'autopilot', label: 'Solve the next ticket', prompt: '/ticket-autopilot', cwd: path.join(os.homedir(), 'Dev/shop') }]
   })
 })
 
@@ -158,6 +159,28 @@ stub('qualifs', {
   NUMBERS: Array.from({ length: 15 }, (_, i) => i + 1),
   Qualifs: class {
     list = () => [{ number: 4, tickets: ['SHOP-469'], last: null, current: null }]
+  }
+})
+
+const run = (id, extra) => ({ id, workflow: 'autopilot', label: 'Solve the next ticket', terminal: `run:${id}`, pr: null, question: null, events: [], open: false, dismissed: false, ...extra })
+stub('runs', {
+  dir: os.tmpdir(),
+  Runs: class {
+    list = () => [
+      run('autopilot-2', {
+        status: 'waiting',
+        open: true,
+        ticket: 'SHOP-490',
+        stage: 'Judges agreed on candidate b',
+        startedAt: now - 52 * MIN,
+        stageSince: now - 3 * MIN,
+        question: { text: 'SHOP-490: candidate b adds the size guide as a product tab, with 6 unit tests and PHPStan clean. 3 judges of 3 picked it. Open the draft PR?', options: ['Open draft PR', 'Stop here'], asked: now - 3 * MIN }
+      }),
+      run('autopilot-1', { status: 'done', ticket: 'SHOP-482', pr: 'https://github.com/acme/shop/pull/1208', message: 'Draft PR opened', startedAt: now - DAY, finishedAt: now - DAY + 70 * MIN })
+    ]
+    live = () => null
+    watch() {}
+    terminalExited() {}
   }
 })
 

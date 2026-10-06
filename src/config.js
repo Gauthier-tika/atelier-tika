@@ -38,6 +38,7 @@ const defaults = {
   editor: { command: 'nvim', args: ['.'], mode: 'pane' },
   startPrompt: '/jira {key}',
   reviewPrompt: '/review {number}',
+  workflows: [],
   pollSeconds: 120,
   theme: null
 }
@@ -69,6 +70,9 @@ function load() {
   config.editor = { ...defaults.editor, ...user.editor }
   config.editor.command = expand(config.editor.command)
   config.editor.name ||= path.basename(config.editor.command)
+  config.workflows = (Array.isArray(config.workflows) ? config.workflows : [])
+    .filter(w => w?.id && w.prompt)
+    .map(w => ({ ...w, id: String(w.id), label: w.label || String(w.id), cwd: expand(w.cwd || config.repoDir) }))
   return config
 }
 
