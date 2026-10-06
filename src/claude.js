@@ -2,6 +2,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const { run } = require('./run')
+const { watchDir } = require('./store')
 
 const KEY = /\b[A-Z][A-Z0-9]+-\d+\b/g
 const projectsDir = path.join(os.homedir(), '.claude/projects')
@@ -126,30 +127,7 @@ function past() {
   return result.sort((a, b) => b.updated - a.updated)
 }
 
-function watch(onChange) {
-  let timer = null
-  const fire = () => {
-    clearTimeout(timer)
-    timer = setTimeout(onChange, 250)
-  }
-  const attach = () => {
-    try {
-      fs.mkdirSync(stateDir, { recursive: true })
-      return fs.watch(stateDir, fire)
-    } catch {
-      return null
-    }
-  }
-  let watcher = attach()
-  const poll = setInterval(() => {
-    if (!watcher) watcher = attach()
-    fire()
-  }, 30000)
-  return () => {
-    clearInterval(poll)
-    watcher?.close()
-  }
-}
+const watch = onChange => watchDir(stateDir, onChange, { poll: 30000 })
 
 async function focus(config, id) {
   try {

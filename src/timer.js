@@ -1,21 +1,16 @@
-const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
+const { readJson, writeJson } = require('./store')
 
 const file = path.join(os.homedir(), '.local/state/atelier/timer.json')
 
 class Timer {
   constructor() {
-    this.state = { running: null, unlogged: {} }
-    try {
-      this.state = { ...this.state, ...JSON.parse(fs.readFileSync(file, 'utf8')) }
-    } catch {}
+    this.state = { running: null, unlogged: {}, ...readJson(file, {}) }
   }
 
   save() {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file + '.tmp', JSON.stringify(this.state))
-    fs.renameSync(file + '.tmp', file)
+    writeJson(file, this.state)
   }
 
   start(key) {

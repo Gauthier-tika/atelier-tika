@@ -1,4 +1,3 @@
-const path = require('node:path')
 const { run } = require('./run')
 
 const searchQuery = `
@@ -115,7 +114,7 @@ function phaseOf(jobs) {
 async function qualifDeploys(config, branches) {
   const workflow = config.qualif?.workflow
   if (!workflow) return {}
-  const repo = config.qualif.repo || `${config.githubOrg}/${path.basename(config.repoDir)}`
+  const repo = config.qualif.repo || config.githubRepo
   const result = {}
   await Promise.all(branches.map(async branch => {
     const [latest] = JSON.parse(await run('gh', ['run', 'list', '--repo', repo, '--workflow', workflow, '--branch', branch,

@@ -1,9 +1,9 @@
-const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const { spawn } = require('node:child_process')
 const { env } = require('./run')
 const { fill } = require('./config')
+const { readJson, writeJson } = require('./store')
 
 const file = path.join(os.homedir(), '.local/state/atelier/qualifs.json')
 const OUTPUT_BYTES = 64 * 1024
@@ -12,17 +12,12 @@ class Qualifs {
   constructor(onChange, settings) {
     this.onChange = onChange
     this.settings = settings
-    this.items = {}
+    this.items = readJson(file, {})
     this.running = null
-    try {
-      this.items = JSON.parse(fs.readFileSync(file, 'utf8'))
-    } catch {}
   }
 
   save() {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file + '.tmp', JSON.stringify(this.items, null, 2))
-    fs.renameSync(file + '.tmp', file)
+    writeJson(file, this.items)
   }
 
   numberOf(value) {

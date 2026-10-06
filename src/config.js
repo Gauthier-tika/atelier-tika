@@ -2,6 +2,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const wm = require('./wm')
+const { readJson, writeJson } = require('./store')
 
 const home = os.homedir()
 const bundled = name => path.join(__dirname, '..', 'bin', name)
@@ -58,13 +59,7 @@ const editors = [
 
 const file = path.join(home, '.config/atelier/config.json')
 
-function readUser() {
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'))
-  } catch {
-    return {}
-  }
-}
+const readUser = () => readJson(file, {})
 
 const qualifDefaults = {
   label: 'Qualif',
@@ -113,6 +108,8 @@ function load() {
   if (config.jiraEnvLegacy) config.jiraEnv = legacyJiraEnvFile
   for (const key of ['jiraEnv', 'jiraTimeBin', 'devDir', 'repoDir', 'claudeSessionsBin', 'qualifSyncBin'])
     config[key] = expand(config[key])
+  config.repoName = path.basename(config.repoDir)
+  config.githubRepo = `${config.githubOrg}/${config.repoName}`
   config.editor = { ...defaults.editor, ...user.editor }
   config.editor.command = expand(config.editor.command)
   config.editor.name ||= path.basename(config.editor.command)
@@ -131,14 +128,12 @@ function save(changes) {
     if (value === null) delete user[key]
     else user[key] = value
   }
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file + '.tmp', JSON.stringify(user, null, 2) + '\n')
-  fs.renameSync(file + '.tmp', file)
+  writeJson(file, user)
 }
 
 const fill = (text, values) => text.replace(/\{(\w+)\}/g, (match, name) => Object.hasOwn(values, name) ? String(values[name]) : match)
 
-const editorArgs = (editor, directory) => editor.args.map(arg => arg.replaceAll('{dir}', directory))
-const terminalArgs = (terminal, values) => terminal.args.map(arg => arg.replace(/\{(dir|shell|command)\}/g, (_, name) => values[name]))
+const editorArgs = (editor, dir) => editor.args.map(arg => fill(arg, { dir }))
+const terminalArgs = (terminal, values) => terminal.args.map(arg => fill(arg, values))
 
-module.exports = { load, save, home, expand, tilde, editors, editorArgs, terminalArgs, cleanFilters, cleanQualif, qualifDefaults, readUser, jiraEnvFile, fill }
+module.exports = { load, save, expand, tilde, editors, editorArgs, terminalArgs, cleanFilters, cleanQualif, readUser, jiraEnvFile, fill }

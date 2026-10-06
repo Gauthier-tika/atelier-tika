@@ -1,11 +1,9 @@
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
-const { run, detach } = require('./run')
+const { run, detach, quote, shell } = require('./run')
 const { editorArgs, terminalArgs } = require('./config')
 const wm = require('./wm')
-
-const quote = value => `'${String(value).replace(/'/g, `'\\''`)}'`
 
 let browserClass = null
 async function browserMatcher() {
@@ -34,7 +32,7 @@ async function openUrl(url) {
 function directoryFor(config, repo, cwd) {
   if (cwd && fs.existsSync(cwd)) return cwd
   if (repo) {
-    if (path.basename(config.repoDir) === repo && fs.existsSync(config.repoDir)) return config.repoDir
+    if (config.repoName === repo && fs.existsSync(config.repoDir)) return config.repoDir
     const guess = path.join(config.devDir, repo)
     if (fs.existsSync(guess)) return guess
   }
@@ -42,7 +40,6 @@ function directoryFor(config, repo, cwd) {
 }
 
 function terminal(config, directory, claudeArgs) {
-  const shell = process.env.SHELL || '/bin/zsh'
   const command = `claude ${claudeArgs.map(quote).join(' ')}; exec ${quote(shell)}`
   detach(config.terminal.command, terminalArgs(config.terminal, { dir: directory, shell, command }), { cwd: directory })
   return 'terminal'

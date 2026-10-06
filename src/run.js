@@ -46,4 +46,7 @@ function executable(file) {
 
 const onPath = command => command.includes('/') ? executable(command) : env.PATH.split(':').some(dir => executable(path.join(dir, command)))
 
-module.exports = { run, detach, env, onPath }
+const quote = value => `'${String(value).replace(/'/g, `'\\''`)}'`
+const shell = process.env.SHELL || '/bin/zsh'
+
+module.exports = { run, detach, env, onPath, quote, shell }

@@ -8,7 +8,7 @@ const claude = require('./claude')
 const launch = require('./launch')
 const wm = require('./wm')
 const { Timer } = require('./timer')
-const { compose, qualifPrs, deploysPrBranch, deployTarget, syncedBranch } = require('./compose')
+const { compose, qualifPrs, deploysPrBranch, deployTarget, syncedBranch, inProgressStation } = require('./compose')
 const { Qualifs } = require('./qualifs')
 const { run, onPath, env } = require('./run')
 const rebase = require('./rebase')
@@ -110,7 +110,7 @@ function qualifSettings() {
   return {
     enabled: Boolean(config.qualif),
     values: { ...settings, inputs: Object.entries(settings.inputs).map(([key, value]) => `${key}=${value}`).join('\n') },
-    defaultRepo: `${config.githubOrg}/${path.basename(config.repoDir)}`,
+    defaultRepo: config.githubRepo,
     cache: settings.cache?.commands.map(command => command.join(' ')) || [],
     fields: data.jiraFields
   }
@@ -377,7 +377,7 @@ const actions = {
       key,
       label: view.summary,
       cwd: resume ? launch.directoryFor(config, null, view.previous.cwd) : config.repoDir,
-      args: resume ? ['--resume', view.previous.id] : [config.startPrompt.replaceAll('{key}', key)]
+      args: resume ? ['--resume', view.previous.id] : [configModule.fill(config.startPrompt, { key })]
     })
     return { view: id }
   },
@@ -395,7 +395,7 @@ const actions = {
     const view = current().tickets.find(t => t.key === key)
     if (!view) throw new Error(`${key} is not in your list`)
     const pr = view.rebasable
-    if (!pr) throw new Error(`${key} has no open pull request in ${path.basename(config.repoDir)}`)
+    if (!pr) throw new Error(`${key} has no open pull request in ${config.repoName}`)
     const id = `rebase:${key}`
     const embedded = terminals.get(id)
     if (embedded && !embedded.exited) return { view: id }
@@ -432,7 +432,7 @@ const actions = {
       prId: pr.id,
       label: `Review of ${pr.repo}#${pr.number}: ${pr.title}`,
       cwd: launch.directoryFor(config, pr.repo),
-      args: [config.reviewPrompt.replaceAll('{number}', String(pr.number))]
+      args: [configModule.fill(config.reviewPrompt, { number: pr.number })]
     })
     return { view: termId }
   },
@@ -512,7 +512,7 @@ const actions = {
   async take({ key }) {
     const item = data.unassigned?.find(t => t.key === key)
     if (!item) throw new Error(`${key} is no longer unassigned`)
-    const column = data.columns?.find(c => /progress/i.test(c.name))
+    const column = data.columns?.[inProgressStation(data.columns)]
     if (!column) throw new Error('The board has no In progress column')
     await jira.assignToMe(key)
     let status
@@ -600,9 +600,9 @@ const actions = {
     qualifs.get(number)
     await loaders.github()
     if (data.errors.github) throw new Error(`GitHub did not answer (${data.errors.github}), try again`)
-    const rows = qualifPrs(qualifs.get(number).tickets, tickets(), data.github.mine, path.basename(config.repoDir))
+    const rows = qualifPrs(qualifs.get(number).tickets, tickets(), data.github.mine, config.repoName)
     const missing = rows.filter(row => !row.prs.length && !row.merged).map(row => row.key)
-    if (missing.length) throw new Error(`${missing.join(', ')} ${missing.length > 1 ? 'have' : 'has'} no open pull request in ${path.basename(config.repoDir)}. Remove ${missing.length > 1 ? 'them' : 'it'} or open the PR first`)
+    if (missing.length) throw new Error(`${missing.join(', ')} ${missing.length > 1 ? 'have' : 'has'} no open pull request in ${config.repoName}. Remove ${missing.length > 1 ? 'them' : 'it'} or open the PR first`)
     const prs = rows.flatMap(row => row.prs.map(pr => ({ number: pr.number, head: pr.head, branch: pr.branch, key: row.key })))
     const target = deployTarget(settings, data.github.viewer, Number(number), prs)
     if (deploy && !settings.workflow) throw new Error(`No deploy workflow is set up for ${settings.label.toLowerCase()}s in config.json`)

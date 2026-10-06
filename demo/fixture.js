@@ -37,6 +37,8 @@ const config = {
   qualifSettings: qualif,
   githubOrg: 'acme',
   repoDir: path.join(os.homedir(), 'Dev/shop'),
+  repoName: 'shop',
+  githubRepo: 'acme/shop',
   repos: ['~/Dev/shop', '~/Dev/atelier', '~/Dev/infra'],
   reviewRepos: ['shop'],
   workflows: [{ id: 'autopilot', label: 'Solve the next ticket', prompt: '/ticket-autopilot', cwd: path.join(os.homedir(), 'Dev/shop') }]

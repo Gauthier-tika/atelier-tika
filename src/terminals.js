@@ -1,9 +1,8 @@
 const pty = require('@lydell/node-pty')
-const { env } = require('./run')
+const { env, quote, shell } = require('./run')
 const { editorArgs } = require('./config')
 
 const SCROLLBACK_BYTES = 2 * 1024 * 1024
-const quote = value => `'${String(value).replace(/'/g, `'\\''`)}'`
 
 class Terminals {
   constructor(send, claudeCommand, editor) {
@@ -31,7 +30,6 @@ class Terminals {
   spawn(id, { cwd, args = [], label, key = null, prId = null, runId = null, kind = 'claude', parent = null, command = null, env: extraEnv = {} }) {
     const existing = this.items.get(id)
     if (existing && !existing.exited) return existing
-    const shell = process.env.SHELL || '/bin/zsh'
     const childEnv = { ...env, ...extraEnv, TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'atelier' }
     for (const name of Object.keys(childEnv)) if (name.startsWith('ELECTRON_') || name === 'CHROME_DESKTOP') delete childEnv[name]
     const program = kind === 'claude' ? this.claudeCommand : command

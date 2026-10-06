@@ -1,4 +1,3 @@
-const path = require('node:path')
 const { fill } = require('./config')
 
 const KEY = /\b[A-Z][A-Z0-9]+-\d+\b/g
@@ -13,6 +12,9 @@ function prNeedsYou(pr) {
 function claudeNeedsYou(session) {
   return session && (session.status === 'needs-you' || (session.status === 'done' && !session.seen))
 }
+
+const stationOf = (columns, ticket) => columns.findIndex(column => column.statusIds.includes(ticket.status.id))
+const inProgressStation = columns => columns.findIndex(column => /progress/i.test(column.name))
 
 function qualifPrs(keys, tickets, prs, repo) {
   return keys.map(key => {
@@ -42,7 +44,7 @@ const syncedBranch = (settings, login, item) => item.synced?.branch || qualifBra
 function composeQualifs(data, config) {
   const settings = config.qualif
   if (!settings) return null
-  const repo = path.basename(config.repoDir)
+  const repo = config.repoName
   const prs = data.github?.mine || []
   const tickets = data.tickets || []
   const viewer = data.github?.viewer
@@ -51,15 +53,20 @@ function composeQualifs(data, config) {
     const toSync = rows.flatMap(row => row.prs.map(pr => ({ number: pr.number, head: pr.head, branch: pr.branch, key: row.key })))
     const wanted = { tickets: rows.filter(row => row.prs.length).map(row => row.key), prs: toSync }
     const deployed = syncedBranch(settings, viewer, item)
+    const n = item.number
     return {
-      number: item.number,
-      url: settings.url ? fill(settings.url, { n: item.number }) : null,
+      number: n,
+      url: settings.url ? fill(settings.url, { n }) : null,
       branch: deployTarget(settings, viewer, item.number, toSync),
       direct: deploysPrBranch(settings, toSync),
       tickets: rows,
       toSync,
       synced: item.synced || null,
       deploy: (deployed && data.deploys?.[deployed]) || null,
+      cache: settings.cache && {
+        description: fill(settings.cache.description, { n }),
+        commands: settings.cache.commands.map(command => fill(command.join(' '), { n }))
+      },
       cacheClearedAt: item.cacheClearedAt || null,
       upToDate: Boolean(item.synced && data.github && sameSync(item.synced, wanted)),
       last: item.last || null,
@@ -72,7 +79,7 @@ function composeQualifs(data, config) {
     base: settings.base,
     deploys: Boolean(settings.workflow),
     jira: Boolean(settings.jiraField),
-    cache: settings.cache ? { description: settings.cache.description, commands: settings.cache.commands.map(command => command.join(' ')) } : null,
+    cache: Boolean(settings.cache),
     items,
     free: Array.from({ length: settings.count }, (_, i) => i + 1).filter(n => !used.has(n)),
     candidates: tickets
@@ -88,7 +95,7 @@ function compose(data, timer, config, terminals = []) {
   const filters = (config.filters || []).map((filter, index) => ({ id: `filter-${index}`, label: filter.label, icon: filter.icon || null, columns: filter.columns }))
   const stageOf = {}
   for (const filter of filters) for (const column of filter.columns) stageOf[column] ??= filter.id
-  const inProgress = Math.max(0, columns.findIndex(c => /progress/i.test(c.name)))
+  const inProgress = Math.max(0, inProgressStation(columns))
   const prs = data.github?.mine || []
   const past = data.past || []
   const live = (data.live || []).map(session => {
@@ -105,7 +112,7 @@ function compose(data, timer, config, terminals = []) {
   const claimedPrs = new Set()
 
   const tickets = (data.tickets || []).map(ticket => {
-    const station = columns.findIndex(column => column.statusIds.includes(ticket.status.id))
+    const station = stationOf(columns, ticket)
     const column = station >= 0 ? columns[station].name : ticket.status.name
     if (hidden.has(column)) return null
     if (config.mineColumns && station >= 0 && !stageOf[columns[station].id] && !config.mineColumns.includes(columns[station].id)) return null
@@ -120,12 +127,11 @@ function compose(data, timer, config, terminals = []) {
     const previous = session ? null : past.find(p => p.keys.includes(ticket.key))
     const terminal = terminals.find(t => t.id === `ticket:${ticket.key}`) || null
     const pr = ticketPrs[0] || null
-    const rebasable = ticketPrs.find(p => p.state === 'OPEN' && p.repo === path.basename(config.repoDir) && p.base) || null
+    const rebasable = ticketPrs.find(p => p.state === 'OPEN' && p.repo === config.repoName && p.base) || null
     const rebaseTerminal = terminals.find(t => t.id === `rebase:${ticket.key}` && !t.exited) || null
     const rebaseSession = rebaseTerminal ? live.find(s => s.embedded === rebaseTerminal.id) || null : null
     const run = runs.find(r => r.ticket === ticket.key) || null
-    const attention = claudeNeedsYou(session) || claudeNeedsYou(rebaseSession) || (pr && prNeedsYou(pr)) || run?.status === 'waiting'
-    const group = station === inProgress ? 0 : station > inProgress ? 1 : 2
+    const attention = Boolean(claudeNeedsYou(session) || claudeNeedsYou(rebaseSession) || (pr && prNeedsYou(pr)) || run?.status === 'waiting')
     return {
       ...ticket,
       station,
@@ -141,20 +147,16 @@ function compose(data, timer, config, terminals = []) {
       rebase: rebaseTerminal ? { id: rebaseTerminal.id, session: rebaseSession } : null,
       run: run && { id: run.id, label: run.label, status: run.status, terminal: run.terminal },
       attention,
-      rank: [attention ? 0 : 1, group, ticket.blocked ? 1 : 0],
       time: {
         today: data.time?.byTicket?.[ticket.key]?.today || 0,
-        total: ticket.timeSpent,
         unlogged: timer.unlogged[ticket.key] || 0,
         runningSince: timer.running?.key === ticket.key ? timer.running.startedAt : null
       }
     }
   }).filter(Boolean)
 
-  tickets.sort((a, b) => {
-    for (let i = 0; i < a.rank.length; i++) if (a.rank[i] !== b.rank[i]) return a.rank[i] - b.rank[i]
-    return b.updated.localeCompare(a.updated)
-  })
+  const group = ticket => ticket.station === inProgress ? 0 : ticket.station > inProgress ? 1 : 2
+  tickets.sort((a, b) => b.attention - a.attention || group(a) - group(b) || a.blocked - b.blocked || b.updated.localeCompare(a.updated))
 
   const looseSessions = live.filter(s => !claimed.has(s.id))
   const loosePrs = prs.filter(pr => pr.state === 'OPEN' && !claimedPrs.has(pr.id))
@@ -168,7 +170,6 @@ function compose(data, timer, config, terminals = []) {
       const inMyRepos = myRepos.has(pr.repo)
       return {
         ...pr,
-        keys: keysOf(pr),
         terminal,
         group: pr.requested && !reviewedByMe ? 'waiting'
           : !inMyRepos ? 'elsewhere'
@@ -180,7 +181,7 @@ function compose(data, timer, config, terminals = []) {
   reviews.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
 
   const unassigned = (data.unassigned || []).map(ticket => {
-    const station = columns.findIndex(column => column.statusIds.includes(ticket.status.id))
+    const station = stationOf(columns, ticket)
     return { ...ticket, column: station >= 0 ? columns[station].name : ticket.status.name }
   })
 
@@ -209,4 +210,4 @@ function compose(data, timer, config, terminals = []) {
   }
 }
 
-module.exports = { compose, qualifPrs, deploysPrBranch, deployTarget, syncedBranch, keysOf }
+module.exports = { compose, qualifPrs, deploysPrBranch, deployTarget, syncedBranch, inProgressStation }

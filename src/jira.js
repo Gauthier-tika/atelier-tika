@@ -1,6 +1,6 @@
 const fs = require('node:fs')
-const path = require('node:path')
 const { run, env } = require('./run')
+const { writeAtomic } = require('./store')
 
 function qualifNumber(value) {
   const text = typeof value === 'string' ? value : value?.value || ''
@@ -11,11 +11,7 @@ function qualifNumber(value) {
 class Jira {
   constructor(config) {
     this.config = config
-    this.flagField = null
-    this.flagOption = null
-    this.columns = null
-    this.boardList = null
-    this.qualifOptions = null
+    this.reset()
   }
 
   reset() {
@@ -50,9 +46,7 @@ class Jira {
   }
 
   saveAccount(file, { base, email, token }) {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file + '.tmp', `JIRA_BASE=${base}\nATLASSIAN_EMAIL=${email}\nATLASSIAN_TOKEN=${token}\n`, { mode: 0o600 })
-    fs.renameSync(file + '.tmp', file)
+    writeAtomic(file, `JIRA_BASE=${base}\nATLASSIAN_EMAIL=${email}\nATLASSIAN_TOKEN=${token}\n`, { mode: 0o600 })
   }
 
   async request(method, path, { params, body, base = this.config.jiraBase, account } = {}) {
@@ -142,7 +136,7 @@ class Jira {
   async tickets(reconcile = []) {
     const flagField = await this.discoverFlagField()
     const qualifField = this.config.qualif?.jiraField
-    const fields = ['summary', 'status', 'issuetype', 'priority', 'timespent', 'updated', 'parent', flagField, qualifField, this.config.verificationField].filter(Boolean)
+    const fields = ['summary', 'status', 'issuetype', 'priority', 'timespent', 'updated', flagField, qualifField, this.config.verificationField].filter(Boolean)
     const issues = []
     let nextPageToken
     do {
@@ -170,8 +164,7 @@ class Jira {
         url: `${this.config.jiraBase}/browse/${issue.key}`,
         type: f.issuetype?.name || '',
         priority: f.priority?.name || '',
-        status: { id: f.status.id, name: f.status.name, category: f.status.statusCategory?.key },
-        epic: f.parent ? { key: f.parent.key, summary: f.parent.fields?.summary || '' } : null,
+        status: { id: f.status.id, name: f.status.name },
         blocked: Array.isArray(flag) && flag.length > 0,
         qualif: qualifField ? qualifNumber(f[qualifField]) : null,
         verification: this.config.verificationField ? f[this.config.verificationField]?.value || null : null,

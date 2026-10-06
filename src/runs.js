@@ -2,6 +2,7 @@ const crypto = require('node:crypto')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
+const { readJson, writeJson, watchDir } = require('./store')
 
 const stateDir = path.join(os.homedir(), '.local/state/atelier')
 const dir = path.join(stateDir, 'runs')
@@ -11,19 +12,10 @@ const LIVE = ['starting', 'running', 'waiting']
 
 const stamp = date => date.toISOString().replace(/\D/g, '').slice(0, 14)
 
-function writeJson(file, value) {
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file + '.tmp', JSON.stringify(value, null, 2))
-  fs.renameSync(file + '.tmp', file)
-}
-
 class Runs {
   constructor(onChange) {
     this.onChange = onChange
-    this.marks = {}
-    try {
-      this.marks = JSON.parse(fs.readFileSync(marksFile, 'utf8'))
-    } catch {}
+    this.marks = readJson(marksFile, {})
   }
 
   mark(id, patch) {
@@ -60,13 +52,7 @@ class Runs {
     try {
       names = fs.readdirSync(dir).filter(name => name.endsWith('.json'))
     } catch {}
-    return names.map(name => {
-      try {
-        return JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'))
-      } catch {
-        return null
-      }
-    }).filter(run => run?.id)
+    return names.map(name => readJson(path.join(dir, name), null)).filter(run => run?.id)
   }
 
   list() {
@@ -118,15 +104,7 @@ class Runs {
   }
 
   watch() {
-    let timer = null
-    const fire = () => {
-      clearTimeout(timer)
-      timer = setTimeout(this.onChange, 250)
-    }
-    try {
-      fs.mkdirSync(dir, { recursive: true })
-      fs.watch(dir, fire)
-    } catch {}
+    watchDir(dir, this.onChange)
   }
 }
 

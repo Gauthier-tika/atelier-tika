@@ -112,3 +112,8 @@ test('a ticket whose pull requests are all merged is marked merged', () => {
   assert.deepEqual(row.prs, [])
   assert.equal(row.merged, true)
 })
+
+test('each qualif gets its cache commands with its number filled in', () => {
+  const [item] = run().qualifs.items
+  assert.deepEqual(item.cache.commands, ['kubectl -n qualif4 exec deploy/web -- bin/console cache:clear'])
+})

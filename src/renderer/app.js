@@ -265,7 +265,7 @@ function timeCell(ticket) {
   const running = Boolean(t.runningSince)
   const totals = [
     t.today ? `<span><span class="code">${duration(t.today)}</span> today</span>` : '',
-    t.total ? `<span><span class="code">${duration(t.total)}</span> in all</span>` : ''
+    ticket.timeSpent ? `<span><span class="code">${duration(ticket.timeSpent)}</span> in all</span>` : ''
   ].join('')
   return `<div class="time">
     <span class="totals">${totals}</span>
@@ -994,7 +994,6 @@ function deployStatus(q, cache) {
 function qualifCard(state, q) {
   const qualifs = state.qualifs
   const name = `${qualifs.label} ${q.number}`
-  const fillN = text => text.replaceAll('{n}', String(q.number))
   const [color, label] = qualifStatus(q)
   const busy = Boolean(q.current) || Boolean(qualifs.running)
   const missing = q.tickets.some(row => !row.prs.length && !row.merged)
@@ -1033,8 +1032,8 @@ function qualifCard(state, q) {
       <button class="btn primary" data-act="qualif-deploy" data-number="${q.number}" ${canSync ? '' : 'disabled'}>${qualifs.deploys ? 'Sync and deploy' : 'Sync'}</button>
       <button class="btn quiet" data-act="cancel">Cancel</button>
     </div>` : ''}
-    ${confirmingCache && qualifs.cache ? `<div class="confirm">
-      <span class="question">${qualifs.cache.description ? esc(fillN(qualifs.cache.description)) : `Clear the cache of <strong>${esc(name)}</strong>? Atelier runs ${qualifs.cache.commands.map(command => `<span class="code">${esc(fillN(command))}</span>`).join(', then ')}.`}${deployRunning ? ' A deployment is still running.' : ''}</span>
+    ${confirmingCache && q.cache ? `<div class="confirm">
+      <span class="question">${q.cache.description ? esc(q.cache.description) : `Clear the cache of <strong>${esc(name)}</strong>? Atelier runs ${q.cache.commands.map(command => `<span class="code">${esc(command)}</span>`).join(', then ')}.`}${deployRunning ? ' A deployment is still running.' : ''}</span>
       <button class="btn primary" data-act="qualif-cache" data-number="${q.number}" ${busy ? 'disabled' : ''}>Clear the cache</button>
       <button class="btn quiet" data-act="cancel">Cancel</button>
     </div>` : ''}
