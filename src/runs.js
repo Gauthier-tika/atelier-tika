@@ -1,3 +1,4 @@
+const crypto = require('node:crypto')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
@@ -39,6 +40,8 @@ class Runs {
       workflow: workflow.id,
       label: workflow.label,
       terminal: `run:${id}`,
+      session: crypto.randomUUID(),
+      cwd: workflow.cwd,
       startedAt: now.getTime(),
       status: 'starting',
       stage: null,
@@ -96,6 +99,10 @@ class Runs {
 
   answered(id, asked) {
     this.mark(id, { answered: asked })
+  }
+
+  resumed(id) {
+    this.mark(id, { ended: false })
   }
 
   dismiss(id) {

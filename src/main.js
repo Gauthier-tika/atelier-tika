@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, clipboard, dialog, Menu } = require('electron')
+const fs = require('node:fs')
 const path = require('node:path')
 const configModule = require('./config')
 const { Jira } = require('./jira')
@@ -55,7 +56,6 @@ const runs = new Runs(schedulePush)
 terminals.onExit = item => { if (item.runId) runs.terminalExited(item.id) }
 
 function repos() {
-  const fs = require('node:fs')
   const devDir = config.devDir
   const dirs = config.repos?.length ? config.repos.map(configModule.expand) : (() => {
     try {
@@ -160,6 +160,21 @@ function openEditorView(id, cwd, label) {
   return id
 }
 const ticket = key => tickets().find(t => t.key === key)
+
+function spawnRun(run, args) {
+  const cwd = [run.cwd, config.workflows.find(w => w.id === run.workflow)?.cwd, config.repoDir].find(dir => dir && fs.existsSync(dir))
+  terminals.spawn(run.terminal, {
+    runId: run.id,
+    label: run.label,
+    cwd,
+    args,
+    env: {
+      ATELIER_RUN_ID: run.id,
+      ATELIER_RUNS_DIR: runsDir,
+      PATH: `${path.join(__dirname, '..', 'bin')}:${env.PATH}`
+    }
+  })
+}
 
 const actions = {
   refresh: () => refreshAll(),
@@ -315,17 +330,18 @@ const actions = {
     const live = runs.live(workflow.id)
     if (live) return { view: live.terminal, message: `${workflow.label} is already running` }
     const run = runs.create(workflow)
-    terminals.spawn(run.terminal, {
-      runId: run.id,
-      label: workflow.label,
-      cwd: workflow.cwd,
-      args: [workflow.prompt],
-      env: {
-        ATELIER_RUN_ID: run.id,
-        ATELIER_RUNS_DIR: runsDir,
-        PATH: `${path.join(__dirname, '..', 'bin')}:${env.PATH}`
-      }
-    })
+    spawnRun(run, ['--session-id', run.session, workflow.prompt])
+    return { view: run.terminal }
+  },
+
+  runResume({ id }) {
+    const run = runs.get(id)
+    if (!run.session) throw new Error('This run started before Atelier recorded its Claude session')
+    const terminal = terminals.get(run.terminal)
+    if (terminal && !terminal.exited) return { view: run.terminal }
+    if (terminal) terminals.close(run.terminal, { keepChildren: true })
+    runs.resumed(run.id)
+    spawnRun(run, ['--resume', run.session])
     return { view: run.terminal }
   },
 
@@ -594,7 +610,7 @@ async function screenshot() {
     await new Promise(resolve => setTimeout(resolve, 1500))
   }
   const image = await win.webContents.capturePage()
-  require('node:fs').writeFileSync(shotPath, image.toPNG())
+  fs.writeFileSync(shotPath, image.toPNG())
   terminals.killAll()
   app.exit(0)
 }

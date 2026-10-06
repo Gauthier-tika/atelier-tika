@@ -176,9 +176,11 @@ stub('runs', {
         stageSince: now - 3 * MIN,
         question: { text: 'SHOP-490: candidate b adds the size guide as a product tab, with 6 unit tests and PHPStan clean. 3 judges of 3 picked it. Open the draft PR?', options: ['Open draft PR', 'Stop here'], asked: now - 3 * MIN }
       }),
-      run('autopilot-1', { status: 'done', ticket: 'SHOP-482', pr: 'https://github.com/acme/shop/pull/1208', message: 'Draft PR opened', startedAt: now - DAY, finishedAt: now - DAY + 70 * MIN })
+      run('autopilot-1', { status: 'done', session: '7f3c2a10-5b1e-4d2a-9c4e-2b8f6d1a0e93', ticket: 'SHOP-482', pr: 'https://github.com/acme/shop/pull/1208', message: 'Draft PR opened', startedAt: now - DAY, finishedAt: now - DAY + 70 * MIN })
     ]
     live = () => null
+    get = id => this.list().find(r => r.id === id)
+    resumed() {}
     watch() {}
     terminalExited() {}
   }

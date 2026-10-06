@@ -163,6 +163,8 @@ Atelier starts the session with `ATELIER_RUN_ID` and `ATELIER_RUNS_DIR` set and 
 | `atelier-run done [--pr <url>] [--message <text>]` | Marks the run done, with its pull request |
 | `atelier-run skip "<reason>"` / `atelier-run fail "<reason>"` | Marks the run skipped or failed |
 
+Each run starts its own Claude session. Once that session has exited, **Resume the session** on the run, or on its ended session, opens it again with `claude --resume` and the same run variables, so the run can keep reporting. Runs started before Atelier recorded their session cannot be resumed.
+
 Outside Atelier, `atelier-run` records nothing and exits 0, so a prompt can call it unconditionally. Runs live in `~/.local/state/atelier/runs/<id>.json` for 14 days. A run whose session exits before `done`, `skip` or `fail` shows as Ended.
 
 ## Terminal shortcuts

@@ -583,6 +583,7 @@ function sessionMenu(t) {
   const shell = t.kind === 'terminal'
   const current = document.body.dataset.view === 'session' && view.active === t.id
   const claudeId = t.session?.id
+  const run = runOf(t)
   return [
     !current && { label: shell ? 'Open terminal' : 'Open session', run: () => openSession(t.id) },
     ticket && { label: `Open ${t.key} in Jira`, run: () => act('openUrl', { url: ticket.url }) },
@@ -598,6 +599,7 @@ function sessionMenu(t) {
     } },
     t.exited && t.key && { label: 'Resume the session', run: () => act('claudeOpen', { key: t.key }) },
     t.exited && t.prId && { label: 'Start the review again', run: () => act('reviewWithClaude', { id: t.prId }) },
+    t.exited && run?.session && { label: 'Resume the session', run: () => act('runResume', { id: run.id }) },
     '-',
     { label: 'Copy the directory path', run: () => copyText(t.cwd, 'the directory path') },
     claudeId && { label: 'Copy the resume command', run: () => copyText(`cd ${shellQuote(t.cwd)} && claude --resume ${claudeId}`, 'the resume command') },
@@ -770,6 +772,7 @@ function renderSession() {
     ended.innerHTML = `<span>${shell ? 'The shell has exited.' : 'Claude has exited.'}</span>
       ${terminal.key ? `<button class="btn primary" data-act="claude" data-key="${esc(terminal.key)}">Resume the session</button>` : ''}
       ${terminal.prId ? `<button class="btn primary" data-act="review-claude" data-id="${esc(terminal.prId)}">Start the review again</button>` : ''}
+      ${runOf(terminal)?.session ? `<button class="btn primary" data-act="run-resume" data-id="${esc(terminal.runId)}">Resume the session</button>` : ''}
       <button class="btn quiet" data-act="end-session" data-id="${esc(terminal.id)}">Close</button>`
   } else {
     ended.hidden = true

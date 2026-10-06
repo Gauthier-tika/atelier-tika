@@ -398,7 +398,8 @@ function runCard(state, run) {
       ${run.ticket ? ticket ? `<button class="key code" data-act="open-url" data-url="${esc(ticket.url)}" title="${esc(ticket.summary)}">${esc(run.ticket)}</button>` : `<span class="key code">${esc(run.ticket)}</span>` : ''}
       ${runPr(state, run)}
       <span class="run-actions">
-        ${run.open ? `<button class="btn quiet" data-act="open-session" data-id="${esc(run.terminal)}"><span class="glyph">${G.terminal}</span><span class="t">Open the session</span></button>` : ''}
+        ${run.session && !run.running ? `<button class="btn quiet" data-act="run-resume" data-id="${esc(run.id)}" title="Resume this run's Claude session in Atelier" ${ui.busy.has(`run:${run.id}`) ? 'disabled' : ''}><span class="glyph">${G.terminal}</span><span class="t">Resume the session</span></button>`
+          : run.open ? `<button class="btn quiet" data-act="open-session" data-id="${esc(run.terminal)}"><span class="glyph">${G.terminal}</span><span class="t">Open the session</span></button>` : ''}
         ${live ? '' : `<button class="unassign" data-act="run-dismiss" data-id="${esc(run.id)}" title="Remove this run from the list" aria-label="Remove this run from the list"><span class="glyph">${G.cross}</span></button>`}
       </span>
     </div>
@@ -1020,6 +1021,7 @@ const handlers = {
   'workflow-run': el => act('workflowRun', { id: el.dataset.id }, `workflow:${el.dataset.id}`),
   'run-answer': el => act('runAnswer', { id: el.dataset.id, option: el.dataset.option }, `run:${el.dataset.id}`),
   'run-dismiss': el => act('runDismiss', { id: el.dataset.id }),
+  'run-resume': el => act('runResume', { id: el.dataset.id }, `run:${el.dataset.id}`),
   'ask-move': el => {
     ui.confirm = { type: 'move', key: el.dataset.key, station: Number(el.dataset.station) }
     render()

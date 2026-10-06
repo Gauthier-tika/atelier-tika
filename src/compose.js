@@ -79,7 +79,10 @@ function compose(data, timer, config, terminals = []) {
     const first = past.find(p => p.id === session.id)?.prompt || ''
     return { ...session, first, ...(embedded ? { embedded: embedded.id } : {}) }
   })
-  const runs = (data.runs || []).map(run => ({ ...run, open: terminals.some(t => t.id === run.terminal) }))
+  const runs = (data.runs || []).map(run => {
+    const terminal = terminals.find(t => t.id === run.terminal)
+    return { ...run, open: Boolean(terminal), running: Boolean(terminal && !terminal.exited) }
+  })
   const hidden = new Set(config.hiddenColumns || [])
   const claimed = new Set()
   const claimedPrs = new Set()
