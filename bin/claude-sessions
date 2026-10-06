@@ -7,7 +7,8 @@ import sys
 import time
 
 ATELIER = os.path.join(os.path.dirname(os.path.realpath(__file__)), "atelier")
-SWAY = not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") and bool(os.environ.get("SWAYSOCK"))
+DESKTOP = "hyprland" if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") else "sway" if os.environ.get("SWAYSOCK") else None
+SWAY = DESKTOP == "sway"
 STATE_DIR = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or f"/tmp/claude-sessions-{os.getuid()}", "claude-sessions")
 NEEDS_YOU = ("permission_prompt", "elicitation_dialog", "elicitation_url_dialog", "agent_needs_input")
 INTERRUPTED = "[Request interrupted by user"
@@ -132,6 +133,8 @@ def sway_windows(node, order=(), out=None):
 
 
 def clients():
+    if not DESKTOP:
+        return []
     try:
         if SWAY:
             windows = sorted(sway_windows(command_json(["swaymsg", "-t", "get_tree", "-r"])), key=lambda w: w["order"])
@@ -142,6 +145,8 @@ def clients():
 
 
 def active_window():
+    if not DESKTOP:
+        return None
     if SWAY:
         return next((w for w in clients() if w["focused"]), None)
     try:
@@ -151,6 +156,8 @@ def active_window():
 
 
 def focus_window(address):
+    if not DESKTOP:
+        return
     command = ["swaymsg", f"[con_id={address}]", "focus"] if SWAY \
         else ["hyprctl", "dispatch", f'hl.dsp.focus({{ window = "address:{address}" }})']
     try:

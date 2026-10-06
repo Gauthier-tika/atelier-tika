@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Atelier
+Comment=Jira tickets, Claude sessions, PRs and qualifs in one window
+Exec=atelier
+Terminal=false
+Categories=Development;
+StartupWMClass=atelier

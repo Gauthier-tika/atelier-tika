@@ -210,7 +210,8 @@ function claudeChip(ticket) {
   }
   if (s) {
     const [color, label] = sessionLook(s)
-    return chip(color, label, [sessionTitle(s, ticket.key), 'Runs in Ghostty: switch to it'].filter(Boolean).join('\n'))
+    const where = `Runs in ${ui.state.terminal.name}${ui.state.terminal.switching ? ': switch to it' : ''}`
+    return chip(color, label, [sessionTitle(s, ticket.key), where].filter(Boolean).join('\n'))
   }
   if (ticket.previous) {
     const title = withoutKey(ticket.previous.title || ticket.previous.prompt, ticket.key)

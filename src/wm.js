@@ -1,7 +1,8 @@
-const { run, detach } = require('./run')
+const { run } = require('./run')
 
-// Hyprland or Sway, picked from the session's environment.
-const sway = !process.env.HYPRLAND_INSTANCE_SIGNATURE && !!process.env.SWAYSOCK
+// Hyprland, Sway or null (GNOME, KDE…: no window switching), picked from the session's environment.
+const desktop = process.env.HYPRLAND_INSTANCE_SIGNATURE ? 'hyprland' : process.env.SWAYSOCK ? 'sway' : null
+const sway = desktop === 'sway'
 
 function swayWindows(node, focus = [], out = []) {
   if (node.pid && (node.type === 'con' || node.type === 'floating_con'))
@@ -19,6 +20,7 @@ const byFocus = (a, b) => {
 
 // Windows as { address, class, pid, recency }, lowest recency focused last.
 async function clients() {
+  if (!desktop) return []
   try {
     if (sway) {
       const windows = swayWindows(JSON.parse(await run('swaymsg', ['-t', 'get_tree', '-r'], { timeout: 3000 }))).sort(byFocus)
@@ -32,6 +34,7 @@ async function clients() {
 }
 
 async function focus(address) {
+  if (!desktop) return
   const command = sway ? ['swaymsg', [`[con_id=${address}]`, 'focus']]
     : ['hyprctl', ['dispatch', `hl.dsp.focus({ window = "address:${address}" })`]]
   await run(...command, { timeout: 3000 }).catch(() => {})
@@ -39,13 +42,15 @@ async function focus(address) {
 
 // Tags the window as a terminal (a mark on Sway) so compositor rules can match it.
 async function tag(address, on) {
+  if (!desktop) return
   if (sway) return run('swaymsg', [`[con_id=${address}]`, on ? 'mark --add terminal' : 'unmark terminal'], { timeout: 3000 })
   return run('hyprctl', ['dispatch', `hl.dsp.window.tag({ tag = "${on ? '+' : '-'}terminal", window = "address:${address}" })`], { timeout: 3000 })
 }
 
-function openTerminal(directory, shell, command) {
-  if (sway) detach('alacritty', ['--working-directory', directory, '-e', shell, '-ic', command])
-  else detach('uwsm-app', ['--', 'ghostty', `--working-directory=${directory}`, '-e', shell, '-ic', command])
-}
+const shellCommand = ['-e', '{shell}', '-ic', '{command}']
+const terminal = {
+  hyprland: { name: 'Ghostty', command: 'uwsm-app', args: ['--', 'ghostty', '--working-directory={dir}', ...shellCommand] },
+  sway: { name: 'Alacritty', command: 'alacritty', args: ['--working-directory', '{dir}', ...shellCommand] }
+}[desktop] || { name: 'Ghostty', command: 'ghostty', args: ['--working-directory={dir}', ...shellCommand] }
 
-module.exports = { sway, clients, focus, tag, openTerminal }
+module.exports = { desktop, clients, focus, tag, terminal }
