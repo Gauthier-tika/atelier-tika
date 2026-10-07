@@ -26,11 +26,17 @@ test('tickets needing you come first, then by column group, blocked last within 
   assert.deepEqual(keys(run().tickets), ['SHOP-477', 'SHOP-455', 'SHOP-490', 'SHOP-482', 'SHOP-461', 'SHOP-469', 'SHOP-448', 'SHOP-440'])
 })
 
-test('a ticket goes to the filter that holds its column, otherwise to My tickets', () => {
+test('a ticket goes to the filter that holds its column, otherwise to Tickets', () => {
   const stages = Object.fromEntries(run().tickets.map(t => [t.key, t.stage]))
   assert.equal(stages['SHOP-448'], 'filter-0')
   assert.equal(stages['SHOP-440'], 'filter-1')
   assert.equal(stages['SHOP-482'], 'mine')
+})
+
+test('the people with tickets come with their count, you first', () => {
+  const people = run().people
+  assert.deepEqual(people.map(p => [p.name, p.count]), [['You Demo', 7], ['Sam Rivera', 1]])
+  assert.equal(run().tickets.find(t => t.key === 'SHOP-490').mine, false)
 })
 
 test('mineColumns hides the tickets of the unchecked columns, but not those of a filter', () => {

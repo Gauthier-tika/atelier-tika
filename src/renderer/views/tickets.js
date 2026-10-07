@@ -128,6 +128,7 @@ function ticketRow(ticket, columns) {
     : ''
   return `<article class="${classes.join(' ')}" data-ticket="${esc(ticket.key)}">
     <div class="head">
+      ${ticket.mine || !ticket.assignee ? '' : `<span class="assignee" title="${esc(`Assigned to ${ticket.assignee.name}`)}">${personAvatar(ticket.assignee)}</span>`}
       ${jiraKey(ticket.key, ticket.url)}
       <span class="summary" title="${esc(ticket.summary)}">${esc(ticket.summary)}</span>
       ${runTag(ticket)}
@@ -151,7 +152,46 @@ function ticketRow(ticket, columns) {
   </article>`
 }
 
-const ticketsIn = (state, stage) => state.tickets.filter(t => t.stage === stage)
+const initials = name => name.split(/\s+/).filter(Boolean).slice(0, 2).map(word => word[0]).join('').toUpperCase()
+
+function personAvatar(person) {
+  return person.avatar
+    ? `<img class="person-avatar" src="${esc(person.avatar)}" alt="">`
+    : `<span class="person-avatar initials" aria-hidden="true">${esc(initials(person.name))}</span>`
+}
+
+// The picked person, as long as they still have tickets on the board.
+const personFilter = state => state.people.some(p => p.id === ui.person) ? ui.person : null
+
+function setPerson(id) {
+  ui.person = id
+  store('atelier.person', id || '')
+  render()
+}
+
+function toggleMine() {
+  const me = ui.state?.people.find(p => p.me)
+  if (me) setPerson(personFilter(ui.state) === me.id ? null : me.id)
+}
+
+const ticketsIn = (state, stage) => {
+  const person = personFilter(state)
+  return state.tickets.filter(t => t.stage === stage && (!person || t.assignee?.id === person))
+}
+
+function peopleBar(state) {
+  if (state.people.length < 2) return ''
+  const person = personFilter(state)
+  const me = state.people.find(p => p.me)
+  const mine = me ? `<button class="chip people-mine ${person === me.id ? 'on' : ''}" data-act="person" data-id="${esc(me.id)}" aria-pressed="${person === me.id}" title="Show only my tickets (M)">
+      <span class="label">Mine</span></button>` : ''
+  return `<div class="people" role="group" aria-label="Filter by assignee">
+    ${mine}
+    <button class="chip people-all ${person ? '' : 'on'}" data-act="person" data-id="" aria-pressed="${!person}" title="Show everyone's tickets">
+      <span class="label">Everyone</span></button>
+    ${state.people.map(p => `<button class="person ${person === p.id ? 'on' : ''}" data-act="person" data-id="${esc(p.id)}" aria-pressed="${person === p.id}" title="${esc(`${p.name}${p.me ? ' (you)' : ''}: ${plural(p.count, 'ticket')}`)}" aria-label="${esc(p.name)}">${personAvatar(p)}</button>`).join('')}
+  </div>`
+}
 
 function ticketList(tickets, columns) {
   const blocked = tickets.filter(t => t.blocked)
@@ -162,13 +202,13 @@ function ticketList(tickets, columns) {
 
 function renderMine(state) {
   const mine = ticketsIn(state, 'mine')
-  const parts = [`<h2 id="mine-title">My tickets <span class="count">${mine.length || ''}</span></h2>`]
+  const parts = [`<h2 id="mine-title">Tickets <span class="count">${mine.length || ''}</span></h2>`, peopleBar(state)]
   if (!state.jira.connected) parts.push('<p class="notice">Connect Jira under <button class="link" data-act="go-settings">Settings</button> to see your tickets.</p>')
   else if (state.errors.jira) parts.push(`<p class="notice">Jira did not answer: ${esc(state.errors.jira)}. Check the Jira part of <button class="link" data-act="go-settings">Settings</button>, then refresh.</p>`)
   else if (state.jira.boards?.length > 1 && !state.jira.boardId) parts.push('<p class="notice">Pick your board under <button class="link" data-act="go-settings">Settings</button> to sort your tickets by column.</p>')
   if (state.errors.github) parts.push(`<p class="notice">GitHub did not answer: ${esc(state.errors.github)}. Run <span class="code">gh auth status</span> in a terminal, then refresh.</p>`)
   if (!mine.length) {
-    parts.push(`<p class="empty">${state.loading.jira ? 'Loading your Jira tickets…' : state.tickets.length ? 'Your other tickets wait for a release.' : 'Nothing is assigned to you outside Done.'}</p>`)
+    parts.push(`<p class="empty">${state.loading.jira ? 'Loading the Jira tickets…' : personFilter(state) ? 'This person has no ticket in these columns.' : state.tickets.length ? 'The other tickets wait for a release.' : 'Nothing is assigned outside Done.'}</p>`)
   }
   parts.push(runList(state))
   parts.push(ticketList(mine, state.columns))
@@ -236,11 +276,11 @@ function syncFilterPanes(state) {
 
 function renderStage(state, stage, title) {
   const tickets = ticketsIn(state, stage)
-  const parts = [`<h2 id="${stage}-title">${esc(title)} <span class="count">${tickets.length || ''}</span></h2>`]
+  const parts = [`<h2 id="${stage}-title">${esc(title)} <span class="count">${tickets.length || ''}</span></h2>`, peopleBar(state)]
   if (state.errors.jira) parts.push(`<p class="notice">Jira did not answer: ${esc(state.errors.jira)}. Refresh once it is back.</p>`)
   parts.push(tickets.length
     ? ticketList(tickets, state.columns)
-    : `<p class="empty">${state.loading.jira ? 'Loading your Jira tickets…' : `None of your tickets is in ${esc(title)}.`}</p>`)
+    : `<p class="empty">${state.loading.jira ? 'Loading the Jira tickets…' : `No ticket is in ${esc(title)}${personFilter(state) ? ' for this person' : ''}.`}</p>`)
   paint($(stage), parts.join(''))
 }
 
@@ -281,6 +321,7 @@ function renderUnassigned(state) {
 }
 
 Object.assign(handlers, {
+  person: el => setPerson(el.dataset.id || null),
   'ask-take': el => askConfirm({ type: 'take', key: el.dataset.key }, `[data-ticket="${el.dataset.key}"] [data-act="take"]`),
   async take(el) {
     const key = el.dataset.key

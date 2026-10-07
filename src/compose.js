@@ -148,6 +148,7 @@ function compose(data, timer, config, terminals = []) {
     const attention = Boolean(claudeNeedsYou(session) || claudeNeedsYou(rebaseSession) || (pr && prNeedsYou(pr)) || run?.status === 'waiting')
     return {
       ...ticket,
+      mine: ticket.mine !== false,
       station,
       column,
       tone: config.columnColors?.[column] || null,
@@ -171,6 +172,14 @@ function compose(data, timer, config, terminals = []) {
 
   const group = ticket => ticket.station === inProgress ? 0 : ticket.station > inProgress ? 1 : 2
   tickets.sort((a, b) => b.attention - a.attention || group(a) - group(b) || a.blocked - b.blocked || b.updated.localeCompare(a.updated))
+
+  const people = new Map()
+  for (const { assignee } of tickets) {
+    if (!assignee) continue
+    const person = people.get(assignee.id) || { ...assignee, count: 0 }
+    person.count++
+    people.set(assignee.id, person)
+  }
 
   const looseSessions = live.filter(s => !claimed.has(s.id))
   const loosePrs = prs.filter(pr => pr.state === 'OPEN' && !claimedPrs.has(pr.id))
@@ -205,6 +214,7 @@ function compose(data, timer, config, terminals = []) {
     filters: filters.map(({ id, label, icon }) => ({ id, label, icon })),
     inProgress: columns[inProgress]?.name || null,
     tickets,
+    people: [...people.values()].sort((a, b) => b.me - a.me || a.name.localeCompare(b.name)),
     unassigned,
     looseSessions,
     loosePrs,

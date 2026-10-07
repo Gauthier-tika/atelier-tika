@@ -123,13 +123,15 @@ Atelier lists as repositories the folders right inside `devDir` that hold a `.gi
 
 Under **Settings**, enter your Jira site, the e-mail of your Atlassian account and an API token, then **Connect**. Atelier checks them against Jira, saves the site as `jiraBase` in `config.json` and the e-mail and token in `~/.config/atelier/jira.env`, readable only by you. Never commit or share that file. Time tracking (`bin/jira-time`) reads the same file. An existing `~/.config/jira-time/env` is used until you connect from Settings; `jiraEnv` points Atelier at any other file.
 
-Your tickets are the ones assigned to you outside Done, on every board. A board gives them their columns: if your account sees a single board Atelier uses it, otherwise pick one under **Settings**, saved as `boardId`.
+Atelier lists the assigned tickets of the board outside Done, whoever they are assigned to. Without a board, it lists the tickets assigned to you on every board. The board gives them their columns: if your account sees a single board Atelier uses it, otherwise pick one under **Settings**, saved as `boardId`.
+
+Above the lists, the avatars of the people who have tickets filter them by assignee. **Mine**, or the `m` key, shows only your tickets; **Everyone** shows them all again. Pull requests are looked up for your tickets only.
 
 Then choose, among that board's columns:
 
-- **My tickets**: the columns whose tickets show under My tickets, all of them by default. Unchecked columns hide their tickets from the lists.
+- **Tickets**: the columns whose tickets show under Tickets, all of them by default. Unchecked columns hide their tickets from the lists.
 - **Unassigned**: the columns whose unassigned tickets show under Unassigned, `["To Do"]` by default. With none, the tab is hidden.
-- **Filters**: each filter is a tab under My tickets, with a name and one or more columns. Your tickets in those columns show there instead of in My tickets. A column belongs to one filter at most.
+- **Filters**: each filter is a tab under Tickets, with a name and one or more columns. Tickets in those columns show there instead of in Tickets. A column belongs to one filter at most.
 
 These are saved in `config.json`, by the column names Jira gives them:
 

@@ -118,14 +118,14 @@ function jiraColumns(jira, loading) {
   const owners = jira.filters.flatMap((filter, index) => filter.columns.map(column => [column, index]))
   const filtered = new Map(owners.map(([column, owner]) => [column, jira.filters[owner].label]))
   const mine = jira.columns.filter(c => !filtered.has(c.id)).map(c => c.id)
-  return `<h3>My tickets</h3>
-    <p class="setting-hint">Your tickets in these columns show under My tickets. Columns in a filter show there instead.</p>
+  return `<h3>Tickets</h3>
+    <p class="setting-hint">Tickets in these columns show under Tickets. Columns in a filter show there instead.</p>
     ${columnPicks(jira.columns, jira.mineColumns || mine, 'data-pick="mine-column"', filtered)}
     <h3>Unassigned</h3>
     <p class="setting-hint">Unassigned tickets in these columns show under Unassigned. Check none to hide the tab.</p>
     ${columnPicks(jira.columns, jira.unassignedColumns, 'data-pick="unassigned-column"')}
     <h3>Filters</h3>
-    <p class="setting-hint">Each filter is a tab under My tickets. Your tickets in its columns show there instead of in My tickets.</p>
+    <p class="setting-hint">Each filter is a tab under Tickets. Tickets in its columns show there instead of in Tickets.</p>
     ${jira.filters.map((filter, index) => {
       const taken = new Map(owners.filter(([, owner]) => owner !== index).map(([column, owner]) => [column, jira.filters[owner].label]))
       return `<div class="filter-edit">

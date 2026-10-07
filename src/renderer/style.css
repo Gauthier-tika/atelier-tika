@@ -870,6 +870,53 @@ body.resizing iframe { pointer-events: none; }
   min-width: 0;
 }
 
+.ticket .assignee { flex: none; align-self: center; display: inline-flex; }
+
+.ticket .assignee .person-avatar { width: 18px; height: 18px; font-size: 8px; }
+
+.people {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px var(--gutter);
+  border-bottom: 1px solid var(--line);
+}
+
+.pane > .people + h3 { border-top: 0; }
+
+.people .chip { border-color: var(--line); }
+.people .chip.on { border-color: var(--purple); color: var(--bright); }
+.people .chip.on .label { color: var(--purple); }
+
+.people .person {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  opacity: .7;
+}
+
+.people .person:hover { opacity: 1; border-color: var(--selection); }
+.people .person.on { opacity: 1; border-color: var(--purple); }
+
+.person-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--surface);
+  object-fit: cover;
+}
+
+.person-avatar.initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--step--1);
+  font-weight: 650;
+  color: var(--fg);
+}
+
 .ticket .key {
   color: var(--cyan);
   flex: none;

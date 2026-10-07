@@ -21,6 +21,8 @@ class Jira {
     this.flagField = null
     this.flagOption = null
     this.columns = null
+    this.boardFilter = null
+    this.avatars = new Map()
     this.boardList = null
     this.qualifOptions = null
     this.accountId = null
@@ -154,6 +156,7 @@ class Jira {
     const board = await this.boardId()
     if (!board) return []
     const configuration = await this.request('GET', `/rest/agile/1.0/board/${board}/configuration`)
+    this.boardFilter = configuration.filter?.id || null
     this.columns = configuration.columnConfig.columns
       .filter(column => column.statuses.length)
       .map(column => ({
@@ -164,16 +167,52 @@ class Jira {
     return this.columns
   }
 
+  async me() {
+    this.accountId ||= (await this.myself()).accountId
+    return this.accountId
+  }
+
+  // Avatars hosted on the Jira site need the account; others (Gravatar, Atlassian CDN) must not get it.
+  avatar(url) {
+    if (!url) return null
+    if (!this.avatars.has(url)) {
+      this.avatars.set(url, (async () => {
+        const headers = {}
+        if (new URL(url).origin === new URL(this.config.jiraBase).origin) {
+          const { email, token } = this.credentials()
+          headers.Authorization = `Basic ${Buffer.from(`${email}:${token}`).toString('base64')}`
+        }
+        const response = await fetch(url, { headers, signal: AbortSignal.timeout(10000) })
+        if (!response.ok) throw new Error(`Avatar ${response.status}`)
+        const type = (response.headers.get('content-type') || 'image/png').split(';')[0]
+        return `data:${type};base64,${Buffer.from(await response.arrayBuffer()).toString('base64')}`
+      })().catch(() => {
+        this.avatars.delete(url)
+        return null
+      }))
+    }
+    return this.avatars.get(url)
+  }
+
+  async assignee(user, me) {
+    if (!user) return null
+    return { id: user.accountId, name: user.displayName || '', avatar: await this.avatar(user.avatarUrls?.['48x48']), me: user.accountId === me }
+  }
+
+  // Every assigned ticket of the board, or only mine when no board is picked.
   async tickets(reconcile = []) {
     const flagField = await this.discoverFlagField()
     const qualifField = this.config.qualif?.jiraField
-    const fields = ['summary', 'status', 'issuetype', 'priority', 'timespent', 'updated', flagField, qualifField, this.config.verificationField].filter(Boolean)
+    const fields = ['summary', 'status', 'issuetype', 'priority', 'timespent', 'updated', 'assignee', flagField, qualifField, this.config.verificationField].filter(Boolean)
+    await this.boardColumns()
+    const me = await this.me()
+    const scope = this.boardFilter ? `filter = ${this.boardFilter} AND assignee is not EMPTY` : 'assignee = currentUser()'
     const issues = []
     let nextPageToken
     do {
       const page = await this.request('GET', '/rest/api/3/search/jql', {
         params: {
-          jql: 'assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC',
+          jql: `${scope} AND statusCategory != Done ORDER BY updated DESC`,
           fields: fields.join(','),
           maxResults: 100,
           reconcileIssues: reconcile,
@@ -184,18 +223,21 @@ class Jira {
       nextPageToken = page.isLast === false ? page.nextPageToken : null
     } while (nextPageToken)
 
-    return issues.map(issue => {
+    return Promise.all(issues.map(async issue => {
       const f = issue.fields
       const flag = f[flagField]
       if (Array.isArray(flag) && flag[0]) this.flagOption = flag[0].id
+      const assignee = await this.assignee(f.assignee, me)
       return {
         ...this.toTicket(issue),
+        assignee,
+        mine: !assignee || assignee.me,
         blocked: Array.isArray(flag) && flag.length > 0,
         qualif: qualifField ? qualifNumber(f[qualifField]) : null,
         verification: this.config.verificationField ? f[this.config.verificationField]?.value || null : null,
         timeSpent: f.timespent || 0
       }
-    })
+    }))
   }
 
   async unassigned() {
@@ -214,8 +256,7 @@ class Jira {
   }
 
   async assignToMe(key) {
-    this.accountId ||= (await this.myself()).accountId
-    await this.request('PUT', `/rest/api/3/issue/${key}/assignee`, { body: { accountId: this.accountId } })
+    await this.request('PUT', `/rest/api/3/issue/${key}/assignee`, { body: { accountId: await this.me() } })
   }
 
   async moveTo(key, statusIds) {

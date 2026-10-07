@@ -60,6 +60,7 @@ const ui = {
   state: null,
   repo: stored('atelier.repo', value => value, null),
   tab: 'mine',
+  person: stored('atelier.person', value => value || null, null),
   settingsTab: stored('atelier.settingsTab', value => ['tickets', 'qualifs'].includes(value) ? value : 'global', 'global'),
   hiddenRepos: stored('atelier.hiddenRepos', value => new Set(JSON.parse(value)), new Set()),
   repoMenu: false,
@@ -247,7 +248,7 @@ function prChip(pr) {
 
 const navItems = state => [
   { tab: 'time', label: 'My time entry', glyph: 'clock' },
-  { tab: 'mine', label: 'My tickets', glyph: 'list' },
+  { tab: 'mine', label: 'Tickets', glyph: 'list' },
   ...(state?.filters || []).map(filter => ({ tab: filter.id, label: filter.label, glyph: G[filter.icon] ? filter.icon : 'filter', sub: true })),
   ...(state && !state.jira.unassignedColumns.length ? [] : [{ tab: 'unassigned', label: 'Unassigned', glyph: 'userPlus', sub: true }]),
   ...(state && !state.qualifs ? [] : [{ tab: 'qualifs', label: `${state?.qualifs.label || 'Qualif'}s`, glyph: 'server' }]),
@@ -437,6 +438,7 @@ document.addEventListener('keydown', event => {
     render()
   } else if (event.key === 'Escape' && ui.confirm) handlers.cancel()
   else if (event.key === 'r' && !event.ctrlKey && !event.metaKey) act('refresh')
+  else if (event.key === 'm' && !event.ctrlKey && !event.metaKey && !event.altKey) toggleMine()
   else {
     const item = navItems(ui.state)[Number(event.key) - 1]
     if (item) setTab(item.tab)

@@ -182,7 +182,7 @@ function createServer({ terminals, send, window: currentWindow, hot, shotPath })
     },
     github: () => load('github', async () => {
       if (!data.tickets) await inFlight.jira?.done
-      return github.pullRequests(config, tickets().map(t => t.key))
+      return github.pullRequests(config, tickets().filter(t => t.mine).map(t => t.key))
     }, result => { data.github = result }).then(() => loaders.deploys()),
     deploys: () => load('deploys', () => github.qualifDeploys(config, qualifBranches()), result => { data.deploys = result }),
     time: () => load('time', () => jira.week(), result => { data.time = result })

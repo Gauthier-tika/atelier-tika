@@ -52,6 +52,8 @@ const columns = [
   { id: 'A MEPP', name: 'À MEPP', statusIds: ['6'] },
   { id: 'A MEP', name: 'À MEP', statusIds: ['7'] }
 ]
+const you = { id: 'acc-you', name: 'You Demo', avatar: null, me: true }
+const sam = { id: 'acc-sam', name: 'Sam Rivera', avatar: null, me: false }
 const status = id => ({ id, name: columns.find(c => c.statusIds.includes(id)).name })
 const ticket = (key, summary, statusId, extra = {}) => ({
   key,
@@ -60,6 +62,8 @@ const ticket = (key, summary, statusId, extra = {}) => ({
   type: 'Story',
   priority: 'Medium',
   status: status(statusId),
+  assignee: you,
+  mine: true,
   blocked: false,
   qualif: null,
   timeSpent: 0,
@@ -72,7 +76,7 @@ const tickets = [
   ticket('SHOP-477', 'Let customers save a cart and share it by link', '3', { timeSpent: hours(3), age: 40 * MIN }),
   ticket('SHOP-469', 'Filter the catalogue by material and finish', '4', { timeSpent: hours(7.25), age: 3 * HOUR, qualif: 4 }),
   ticket('SHOP-455', 'Fix the coupon field losing focus on mobile', '5', { type: 'Bug', timeSpent: hours(2), age: DAY }),
-  ticket('SHOP-490', 'Add a size guide to the sofa pages', '1', { age: 2 * HOUR }),
+  ticket('SHOP-490', 'Add a size guide to the sofa pages', '1', { age: 2 * HOUR, assignee: sam, mine: false }),
   ticket('SHOP-461', 'Translate the returns form in German', '3', { timeSpent: hours(1), age: 2 * DAY, blocked: true }),
   ticket('SHOP-448', 'Send a reminder e-mail for abandoned carts', '6', { timeSpent: hours(9), age: 3 * DAY }),
   ticket('SHOP-440', 'Speed up the search suggestions', '7', { timeSpent: hours(4.5), age: 4 * DAY })
