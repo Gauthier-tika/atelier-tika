@@ -8,13 +8,16 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body data-view="list">
-  <aside class="sidebar" aria-label="Atelier">
+  <aside class="sidebar" id="sidebar" aria-label="Atelier">
     <div class="brand">Atelier</div>
     <nav class="nav" id="tabs" aria-label="Sections" data-tab="mine"></nav>
     <div class="nav-sessions" id="nav-sessions"></div>
     <div class="launch" id="launch"></div>
   </aside>
+  <div class="rail-handle" id="rail-handle" title="Drag to resize, double-click to reset"></div>
+  <button class="rail-tab" id="rail-tab" title="Hide the sidebar (Ctrl+B)" aria-label="Hide the sidebar" aria-controls="sidebar" aria-expanded="true"></button>
   <header class="topbar">
+    <button class="rail-toggle" id="rail-toggle" title="Hide the sidebar (Ctrl+B)" aria-label="Hide the sidebar" aria-controls="sidebar" aria-expanded="true"></button>
     <div class="today" id="today"></div>
     <div class="clock" id="clock"></div>
     <div class="sync" id="sync"></div>

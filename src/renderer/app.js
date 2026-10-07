@@ -36,6 +36,8 @@ const G = {
   clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
   edit: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
   trash: svg('<path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'),
+  panes: svg('<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/><path d="M12 12h9"/>'),
+  sidebar: svg('<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>'),
   eye: svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>')
 }
 
@@ -69,6 +71,66 @@ const ui = {
 }
 
 const $ = id => document.getElementById(id)
+
+const railWidth = x => Math.round(Math.min(420, Math.max(180, x)))
+
+function setRail(width) {
+  if (width) document.documentElement.style.setProperty('--rail-width', `${width}px`)
+  else document.documentElement.style.removeProperty('--rail-width')
+}
+
+setRail(stored('atelier.rail', value => Number(value) ? railWidth(Number(value)) : null, null))
+
+function dragRail(event) {
+  if (event.button !== 0) return
+  event.preventDefault()
+  document.body.classList.add('resizing')
+  let width = null
+  const move = e => {
+    width = railWidth(e.clientX)
+    setRail(width)
+  }
+  const up = () => {
+    window.removeEventListener('pointermove', move)
+    window.removeEventListener('pointerup', up)
+    document.body.classList.remove('resizing')
+    if (width) store('atelier.rail', width)
+  }
+  window.addEventListener('pointermove', move)
+  window.addEventListener('pointerup', up)
+}
+
+$('rail-handle').addEventListener('pointerdown', dragRail)
+$('rail-handle').addEventListener('dblclick', () => {
+  setRail(null)
+  store('atelier.rail', '')
+})
+
+function setRailHidden(hidden) {
+  document.body.classList.toggle('rail-hidden', hidden)
+  const label = hidden ? 'Show the sidebar' : 'Hide the sidebar'
+  for (const toggle of [$('rail-toggle'), $('rail-tab')]) {
+    toggle.title = `${label} (Ctrl+B)`
+    toggle.setAttribute('aria-label', label)
+    toggle.setAttribute('aria-expanded', String(!hidden))
+  }
+  store('atelier.railHidden', hidden ? '1' : '')
+}
+
+const toggleRail = () => setRailHidden(!document.body.classList.contains('rail-hidden'))
+
+$('rail-toggle').innerHTML = `<span class="glyph">${G.sidebar}</span>`
+$('rail-toggle').addEventListener('click', toggleRail)
+$('rail-tab').innerHTML = `<span class="glyph">${G.back}</span>`
+$('rail-tab').addEventListener('click', toggleRail)
+setRailHidden(stored('atelier.railHidden', value => value === '1', false))
+
+document.addEventListener('keydown', event => {
+  if (event.code !== 'KeyB' || !event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) return
+  if (event.target.closest('.xterm, .menu, dialog')) return
+  event.preventDefault()
+  toggleRail()
+}, true)
 
 const painted = new WeakMap()
 

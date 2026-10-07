@@ -39,7 +39,7 @@
   --step-2: 18px;
   --gutter: 20px;
   --bar: 48px;
-  --rail: 236px;
+  --rail: var(--rail-width, 236px);
   --track-stop: 18px;
 
   color-scheme: dark;
@@ -264,6 +264,52 @@ button {
 }
 
 /* Sidebar: sections, open sessions, launchers */
+
+.rail-handle {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--rail) - 4px);
+  width: 7px;
+  cursor: col-resize;
+  z-index: 4;
+}
+
+.rail-handle::after {
+  content: "";
+  position: absolute;
+  inset: 0 3px;
+}
+
+.rail-handle:hover::after, .resizing .rail-handle::after { background: var(--muted); }
+
+.rail-tab {
+  position: fixed;
+  top: 50%;
+  left: var(--rail);
+  z-index: 5;
+  width: 14px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 1px solid var(--line);
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+  background: var(--sidebar);
+  color: var(--comment);
+  opacity: 0.5;
+}
+
+.rail-tab:hover { opacity: 1; color: var(--fg); }
+.rail-tab .glyph { width: 12px; height: 12px; }
+body.rail-hidden .rail-tab .glyph { transform: scaleX(-1); }
+
+body.rail-hidden { --rail: 0px; }
+body.rail-hidden :is(.sidebar, .rail-handle) { display: none; }
+
+body.resizing { cursor: col-resize; user-select: none; }
+body.resizing iframe { pointer-events: none; }
 
 .sidebar {
   grid-column: 1;
@@ -600,6 +646,19 @@ button {
 }
 
 .sync .problem { color: var(--red); }
+
+.rail-toggle {
+  width: 28px;
+  height: 28px;
+  margin-left: -8px;
+  border-radius: 6px;
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--comment);
+}
+
+.rail-toggle:hover { color: var(--fg); background: var(--surface); }
 
 .sync .refresh {
   width: 28px;
@@ -1729,6 +1788,7 @@ body:not([data-view="list"]) .panes { display: none; }
 
 @media (max-width: 860px) {
   :root { --rail: 60px; }
+  .rail-handle { display: none; }
   .brand { justify-content: center; padding: 0; font-size: 0; }
   .brand::before { content: "A"; font-size: var(--step-2); }
   .nav button, .nav button.sub { grid-template-columns: 1fr; justify-items: center; padding: 9px 0; }
