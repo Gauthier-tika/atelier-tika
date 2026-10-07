@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+dir="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+electron="$(readlink -f "$dir/node_modules/electron/dist/electron")"
+if [[ ! -x $electron ]]; then
+  echo "Electron is not installed, run npm install in $dir first" >&2
+  exit 1
+fi
+profile="/etc/apparmor.d/atelier-electron"
+template="$(<"$dir/atelier.apparmor")"
+printf '%s\n' "${template//@ELECTRON@/"$electron"}" | sudo tee "$profile" >/dev/null
+sudo apparmor_parser -r "$profile"

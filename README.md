@@ -52,6 +52,7 @@ cp atelier.desktop ~/.local/share/applications/
 | Script | Role |
 |---|---|
 | `bin/atelier` | Launcher |
+| `bin/atelier-apparmor` | Installs the AppArmor profile Electron's sandbox needs, pointed at this clone |
 | `bin/claude-sessions` | Tracks running Claude sessions through Claude Code hooks, lists them and focuses their window |
 | `bin/jira-time` | Reads the week's Jira worklogs and logs time. Atelier passes it `jiraBase`, `jiraEnv` and `dailyHours` |
 | `bin/atelier-run` | Lets a workflow run report its stage, ticket, questions and outcome to Atelier |
@@ -63,12 +64,13 @@ Atelier only sees Claude sessions once the hook is registered. Add this to `~/.c
 { "hooks": [{ "type": "command", "command": "~/Dev/atelier/bin/claude-sessions hook", "timeout": 5 }] }
 ```
 
-On distributions that restrict unprivileged user namespaces (Ubuntu 24.04 and later), Electron's sandbox needs the AppArmor profile in `atelier.apparmor`. Fix the path inside it, then load it:
+On distributions that restrict unprivileged user namespaces (Ubuntu 24.04 and later), Electron's sandbox needs the AppArmor profile in `atelier.apparmor`. Install it for your clone, and again whenever the clone moves:
 
 ```sh
-sudo cp atelier.apparmor /etc/apparmor.d/atelier-electron
-sudo apparmor_parser -r /etc/apparmor.d/atelier-electron
+bin/atelier-apparmor
 ```
+
+It fills in the path of this clone's Electron, writes the profile to `/etc/apparmor.d/atelier-electron` and loads it, asking for `sudo`.
 
 ## Configuration
 
