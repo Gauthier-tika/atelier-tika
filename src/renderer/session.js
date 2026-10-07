@@ -33,7 +33,7 @@ function ensurePane(id) {
   el.append(host)
 
   const term = new Terminal({
-    fontFamily: '"SauceCodePro Nerd Font Mono", "SauceCodePro NFM", monospace',
+    fontFamily: '"SauceCodePro Nerd Font Mono", "SauceCodePro NFM", "JetBrainsMono Nerd Font Mono", "JetBrainsMono NFM", "Symbols Nerd Font Mono", monospace',
     fontSize: view.fontSize,
     cols: view.size.cols,
     rows: view.size.rows,
