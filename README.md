@@ -210,7 +210,7 @@ A graphical editor opens in its own window (`"mode": "window"`), and the session
 
 ### Terminal
 
-Atelier opens a Claude session in its own window with the terminal under `"terminal"` in `~/.config/atelier/config.json`, and names that terminal when it shows sessions running outside Atelier. Without one, it uses Ghostty through `uwsm-app` on Hyprland, Alacritty on Sway and Ghostty elsewhere.
+Atelier opens a Claude session in its own window with the terminal under `"terminal"` in `~/.config/atelier/config.json`, and names that terminal when it shows sessions running outside Atelier. Without one, it uses Ghostty through `uwsm-app` on Hyprland and Alacritty on Sway. Elsewhere it uses Ghostty when installed, otherwise the system terminal (`x-terminal-emulator`) if it is Terminator, GNOME Terminal, Ptyxis or Konsole.
 
 In `args`, `{dir}` becomes the session directory, `{shell}` your `$SHELL` and `{command}` the command to run in it. Pass `{command}` to the shell with `-ic`, so that your `PATH` and aliases apply:
 

@@ -1,4 +1,6 @@
-const { run } = require('./run')
+const fs = require('node:fs')
+const path = require('node:path')
+const { run, onPath } = require('./run')
 
 // Hyprland, Sway or null (GNOME, KDE…: no window switching), picked from the session's environment.
 const desktop = process.env.HYPRLAND_INSTANCE_SIGNATURE ? 'hyprland' : process.env.SWAYSOCK ? 'sway' : null
@@ -48,9 +50,29 @@ async function tag(address, on) {
 }
 
 const shellCommand = ['-e', '{shell}', '-ic', '{command}']
+const shellArgs = ['{shell}', '-ic', '{command}']
+
+// Elsewhere: Ghostty if installed, else the system's x-terminal-emulator when Atelier knows its arguments.
+const known = {
+  ghostty: { name: 'Ghostty', command: 'ghostty', args: ['--working-directory={dir}', ...shellCommand] },
+  terminator: { name: 'Terminator', command: 'terminator', args: ['--working-directory={dir}', '-x', ...shellArgs] },
+  'gnome-terminal': { name: 'GNOME Terminal', command: 'gnome-terminal', args: ['--working-directory={dir}', '--', ...shellArgs] },
+  ptyxis: { name: 'Ptyxis', command: 'ptyxis', args: ['--new-window', '-d', '{dir}', '--', ...shellArgs] },
+  konsole: { name: 'Konsole', command: 'konsole', args: ['--workdir', '{dir}', '-e', ...shellArgs] }
+}
+
+function systemTerminal() {
+  if (onPath('ghostty')) return known.ghostty
+  try {
+    const name = path.basename(fs.realpathSync('/etc/alternatives/x-terminal-emulator')).replace(/\.wrapper$/, '')
+    if (known[name]) return known[name]
+  } catch {}
+  return known.ghostty
+}
+
 const terminal = {
   hyprland: { name: 'Ghostty', command: 'uwsm-app', args: ['--', 'ghostty', '--working-directory={dir}', ...shellCommand] },
   sway: { name: 'Alacritty', command: 'alacritty', args: ['--working-directory', '{dir}', ...shellCommand] }
-}[desktop] || { name: 'Ghostty', command: 'ghostty', args: ['--working-directory={dir}', ...shellCommand] }
+}[desktop] || systemTerminal()
 
 module.exports = { desktop, clients, focus, tag, terminal }
