@@ -5,10 +5,8 @@ const { editorArgs } = require('./config')
 const SCROLLBACK_BYTES = 2 * 1024 * 1024
 
 class Terminals {
-  constructor(send, claudeCommand, editor) {
+  constructor(send) {
     this.send = send
-    this.claudeCommand = claudeCommand
-    this.editor = editor
     this.items = new Map()
     this.pending = new Map()
     this.flushTimer = null

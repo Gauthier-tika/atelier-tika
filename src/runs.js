@@ -108,7 +108,7 @@ class Runs {
   }
 
   watch() {
-    watchDir(dir, () => {
+    return watchDir(dir, () => {
       this.files = null
       this.onChange()
     })

@@ -45,6 +45,17 @@ On GNOME, KDE and other desktops with an app launcher, also install the desktop 
 cp atelier.desktop ~/.local/share/applications/
 ```
 
+## Live reload
+
+Atelier watches `src/` and applies a change as soon as it is saved, without ending the sessions it runs:
+
+- A stylesheet is swapped in place.
+- A file of the page (`src/renderer/`, `src/preload.js`) reloads the page, which reopens the tab, session, splits and font size it showed.
+- Any other file reloads the main process code: config, Jira, GitHub, actions and the rest are loaded again and the data refreshed. The terminals and a running qualif sync carry on, and pick up changes to their code.
+- `src/main.js`, which owns the window and the terminals, needs a restart.
+
+`Ctrl+Shift+R` reloads both at once. A file that fails to load shows an error and Atelier keeps running the code it had. `ATELIER_HOT=0` turns the watching off.
+
 ## Bundled scripts
 
 `bin/` ships the helpers Atelier calls. Atelier runs them from there; `claudeSessionsBin`, `qualifSyncBin` and `jiraTimeBin` point elsewhere if needed.
@@ -94,6 +105,7 @@ Atelier lists as repositories the folders right inside `devDir` that hold a `.gi
 |---|---|
 | `ATELIER_CLAUDE_BIN` | Command used to start Claude instead of `claudeCommand` |
 | `ATELIER_WIDTH`, `ATELIER_HEIGHT` | Initial window size |
+| `ATELIER_HOT` | `0` stops reloading the code on change (see [Live reload](#live-reload)) |
 | `ATELIER_SHOT` | Save a screenshot to this path (`npm run shot`) |
 | `ATELIER_SHOT_TAB`, `ATELIER_SHOT_SESSION` | Tab or session to show in that screenshot |
 
@@ -246,3 +258,4 @@ Outside Atelier, `atelier-run` records nothing and exits 0, so a prompt can call
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Font size up / down / reset |
 | `Ctrl+Shift+L` | Back to the ticket list |
+| `Ctrl+Shift+R` | Reload Atelier's code and page, keeping the sessions |

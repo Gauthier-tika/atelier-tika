@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('atelier', {
   view: (name, id) => ipcRenderer.send('view', name, id),
   onConfirmQuit: callback => ipcRenderer.on('confirm-quit', (_event, running) => callback(running)),
   quit: () => ipcRenderer.send('quit'),
+  onHot: callback => ipcRenderer.on('hot', (_event, kind, message) => callback(kind, message)),
   term: {
     input: (id, data) => ipcRenderer.send('term-input', id, data),
     resize: (id, cols, rows) => ipcRenderer.send('term-resize', id, cols, rows),
