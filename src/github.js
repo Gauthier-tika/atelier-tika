@@ -56,6 +56,13 @@ query($q: String!) {
   search(query: $q, type: ISSUE, first: 50) { nodes { ... on PullRequest { id } } }
 }`
 
+const reposQuery = `
+query($org: String!) {
+  organization(login: $org) {
+    repositories(first: 100, isArchived: false, orderBy: { field: NAME, direction: ASC }) { nodes { name viewerPermission } }
+  }
+}`
+
 async function graphql(query, variables, attempts = 2) {
   const args = ['api', 'graphql', '-f', `query=${query}`]
   for (const [name, value] of Object.entries(variables))
@@ -84,11 +91,12 @@ async function ticketSearches(org, keys) {
 async function pullRequests(config, keys = []) {
   const org = config.githubOrg
   const since = new Date(Date.now() - 45 * 86400000).toISOString().slice(0, 10)
-  const [mine, open, requested, onTickets] = await Promise.all([
+  const [mine, open, requested, onTickets, repos] = await Promise.all([
     graphql(searchQuery, { q: `is:pr author:@me org:${org} updated:>=${since} sort:updated-desc`, first: 40 }),
     graphql(searchQuery, { q: `is:pr is:open draft:false archived:false -author:@me org:${org} sort:updated-desc`, first: 40 }),
     graphql(requestedQuery, { q: `is:pr is:open review-requested:@me org:${org}` }),
-    ticketSearches(org, keys)
+    ticketSearches(org, keys),
+    graphql(reposQuery, { org })
   ])
   const viewer = mine.viewer.login
   const requestedIds = new Set(requested.search.nodes.map(node => node.id))
@@ -96,6 +104,7 @@ async function pullRequests(config, keys = []) {
   const ours = [...mine.search.nodes, ...onTickets].filter(node => node.id && !seen.has(node.id) && seen.add(node.id))
   return {
     viewer,
+    repos: repos.organization.repositories.nodes.filter(repo => repo.viewerPermission).map(repo => repo.name),
     mine: ours.map(pr => shape(pr, viewer)),
     reviews: open.search.nodes
       .filter(node => node.id)

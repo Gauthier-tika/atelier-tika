@@ -127,6 +127,7 @@ const pr = (number, title, branch, extra = {}) => ({
 
 const github = {
   viewer: 'you',
+  repos: ['shop', 'shop-infra', 'design-system'],
   mine: [
     pr(1208, 'SHOP-482 Show delivery dates on the product page', 'SHOP-482-delivery-dates', { checks: 'PENDING', draft: true }),
     pr(1201, 'SHOP-469 Filter the catalogue by material and finish', 'SHOP-469-material-filter', { decision: 'APPROVED' }),

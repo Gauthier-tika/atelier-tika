@@ -210,6 +210,7 @@ function compose(data, timer, config, terminals = []) {
     loosePrs,
     reviews,
     reviewRepos: [...myRepos],
+    githubRepos: data.github?.repos || [],
     terminals: terminals.map(t => ({ ...t, session: live.find(s => s.embedded === t.id) || null })),
     viewer: data.github?.viewer || null,
     qualifs: composeQualifs(data, config),

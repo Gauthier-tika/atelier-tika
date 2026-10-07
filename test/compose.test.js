@@ -78,6 +78,11 @@ test('reviews are grouped by what they wait for', () => {
   assert.deepEqual(run().reviews.map(pr => [pr.number, pr.group]), [[1206, 'waiting'], [1199, 'approved']])
 })
 
+test('the repository filter lists the repositories you can access', () => {
+  assert.deepEqual(run().githubRepos, ['shop', 'shop-infra', 'design-system'])
+  assert.deepEqual(run({ extra: { github: { ...demo.github, repos: undefined } } }).githubRepos, [])
+})
+
 test('unassigned tickets show their board column', () => {
   assert.deepEqual(run().unassigned.map(t => t.column), ['To Do', 'To Do'])
 })

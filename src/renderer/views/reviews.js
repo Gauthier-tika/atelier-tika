@@ -29,8 +29,10 @@ function reviewRow(pr) {
   </article>`
 }
 
+const filterRepos = state => [...new Set([...state.githubRepos, ...state.reviews.map(pr => pr.repo)])].sort((a, b) => a.localeCompare(b))
+
 function repoFilter(state) {
-  const repos = [...new Set(state.reviews.map(pr => pr.repo))].sort((a, b) => a.localeCompare(b))
+  const repos = filterRepos(state)
   if (repos.length < 2) return ''
   const shown = repos.filter(repo => !ui.hiddenRepos.has(repo))
   const label = shown.length === repos.length ? 'All repositories' : shown.length === 1 ? shown[0] : `${shown.length} of ${repos.length} repositories`
@@ -97,7 +99,7 @@ Object.assign(handlers, {
     render()
   },
   'repos-all': () => setHiddenRepos([]),
-  'repos-none': () => setHiddenRepos(ui.state.reviews.map(pr => pr.repo)),
+  'repos-none': () => setHiddenRepos(filterRepos(ui.state)),
   'review-claude': el => act('reviewWithClaude', { id: el.dataset.id })
 })
 
