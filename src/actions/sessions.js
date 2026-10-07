@@ -1,10 +1,11 @@
+const os = require('node:os')
 const configModule = require('../config')
 const claude = require('../claude')
 const launch = require('../launch')
 const rebase = require('../rebase')
 const sapling = require('../sapling')
 const wm = require('../wm')
-const { run } = require('../run')
+const { run, onPath } = require('../run')
 
 module.exports = ({ config, data, terminals, loaders, push, repos, ticketView }) => {
   const editorWindow = () => config.editor.mode === 'window'
@@ -45,9 +46,11 @@ module.exports = ({ config, data, terminals, loaders, push, repos, ticketView })
       const session = data.live.find(s => s.id === id)
       const embedded = session && terminals.list().find(t => t.pid === session.pid && !t.exited)
       if (embedded) return { view: embedded.id }
-      if (!wm.desktop) throw new Error(`This session runs in ${config.terminal.name}, and Atelier cannot switch windows on this desktop`)
-      if (await claude.focus(config, id)) return `Switched to the session in ${config.terminal.name}`
-      throw new Error('Its terminal window was not found')
+      if (!wm.desktop && !session?.herdr) throw new Error(`This session runs in ${config.terminal.name}, and Atelier cannot switch windows on this desktop`)
+      const place = await claude.focus(config, id)
+      if (place === 'herdr') return terminals.alive('herdr') ? { view: 'herdr', message: 'Switched to the session in herdr' } : 'Switched to the session in herdr'
+      if (place) return `Switched to the session in ${config.terminal.name}`
+      throw new Error(session?.herdr ? 'herdr no longer shows this session' : 'Its terminal window was not found')
     },
 
     async rebase({ key }) {
@@ -101,6 +104,15 @@ module.exports = ({ config, data, terminals, loaders, push, repos, ticketView })
       const repo = repoNamed(name)
       const id = terminals.nextId(`repo:${repo.name}:`)
       terminals.spawn(id, { role: 'repo', repo: repo.name, label: `Claude in ${repo.name}`, cwd: repo.dir })
+      return { view: id }
+    },
+
+    herdrOpen() {
+      if (!onPath('herdr')) throw new Error('herdr is not installed')
+      const id = 'herdr'
+      if (terminals.alive(id)) return { view: id }
+      terminals.spawn(id, { role: 'herdr', label: 'herdr', cwd: os.homedir(), kind: 'terminal' })
+      terminals.write(id, 'herdr\r')
       return { view: id }
     },
 

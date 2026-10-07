@@ -11,7 +11,7 @@ It runs on Linux. On Hyprland and Sway it can also switch to the windows of Clau
 ## What it does
 
 - **Tickets**: your Jira tickets, sorted by the columns of a board, with tabs for the columns you pick (MEPP and MEP, for example) and the unassigned tickets. Move a ticket between columns, flag it, take an unassigned one, log time against it with a timer, or add time by hand for a day you pick (`1h`, `1.5h`, `15m`, `1h 30m`). **My time entry** lists today's worklogs in chronological order, each with an **Edit** and an **Add time** button.
-- **Claude sessions**: start or resume a Claude Code session on a ticket in an embedded terminal. Sessions already running in another terminal are shown too, and on Hyprland or Sway Atelier switches to their window.
+- **Claude sessions**: start or resume a Claude Code session on a ticket in an embedded terminal. Sessions already running in another terminal are shown too, and on Hyprland or Sway Atelier switches to their window. A session running in a herdr pane opens in that pane, on any desktop. When `herdr` is on your `PATH`, the **herdr** button under **New Claude session** opens a terminal in Atelier and starts `herdr` in it, which restores the sessions it kept.
 - **Splits**: Ghostty-style panes inside a session. **Open nvim** puts nvim, or the [editor](#editor) you set, on the left of Claude, and extra shells split beside it. A pane closes when its program exits.
 - **PRs and reviews**: GitHub PRs and their checks, rebase a ticket's PR, start a Claude review of a PR.
 - **Qualifs**: which test environment holds which ticket, rebuild and deploy its branch, sync a Jira field, clear its cache. See [Qualifs](#qualifs).
@@ -27,6 +27,7 @@ It runs on Linux. On Hyprland and Sway it can also switch to the windows of Clau
 - An editor: `nvim` by default, any other through `editor` (see [Editor](#editor))
 - Optional: `sl` (Sapling), for `sl web`; without it Atelier uses git
 - Optional, to switch windows: `hyprctl` on Hyprland or `swaymsg` on Sway
+- Optional: `herdr`, to open it from Atelier and switch to the pane of a session that runs in it
 - Optional, a [terminal](#terminal): Ghostty (through `uwsm-app` on Hyprland) by default, Alacritty on Sway
 - A Jira Cloud account and an [API token](https://id.atlassian.com/manage-profile/security/api-tokens)
 
@@ -87,7 +88,7 @@ A running Atelier applies most changes on its own (see [Live reload](#live-reloa
 |---|---|
 | `bin/atelier` | Launcher |
 | `bin/atelier-apparmor` | Installs the AppArmor profile Electron's sandbox needs, pointed at this clone |
-| `bin/claude-sessions` | Tracks running Claude sessions through Claude Code hooks, lists them and focuses their window |
+| `bin/claude-sessions` | Tracks running Claude sessions through Claude Code hooks, lists them and focuses their window or herdr pane |
 | `bin/jira-time` | Reads the week's Jira worklogs and logs time. Atelier passes it `jiraBase`, `jiraEnv` and `dailyHours` |
 | `bin/atelier-run` | Lets a workflow run report its stage, ticket, questions and outcome to Atelier |
 | `bin/qualif-sync` | Rebuilds a qualif branch from its base plus your PRs, pushes it and starts the deploy workflow, or with `--direct` deploys a single PR's branch as it is. Atelier decides which, and passes it the branch and workflow inputs already filled in |

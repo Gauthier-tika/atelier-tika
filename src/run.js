@@ -11,7 +11,7 @@ const extraPath = [
 ]
 const env = Object.fromEntries(
   Object.entries({ ...process.env, PATH: [...extraPath, process.env.PATH].join(':') })
-    .filter(([name]) => !/^CLAUDE/.test(name))
+    .filter(([name]) => !/^(CLAUDE|HERDR_)/.test(name))
 )
 
 function run(command, args, options = {}) {

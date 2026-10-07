@@ -176,10 +176,49 @@ def focus_window(address):
         pass
 
 
-def window_of(session, windows):
-    chain = {pid for pid, _ in ancestors(session.get("pid") or 0)}
+def herdr_bin():
+    return shutil.which("herdr") or os.path.expanduser("~/.local/bin/herdr")
+
+
+def herdr_agent(session_id):
+    try:
+        agents = command_json([herdr_bin(), "agent", "list"])["result"]["agents"]
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        return None
+    return next((a for a in agents if (a.get("agent_session") or {}).get("value") == session_id), None)
+
+
+def herdr_command(args):
+    command, skip = [], False
+    for arg in args:
+        if skip or not arg:
+            skip = False
+        elif arg.startswith(b"-"):
+            skip = arg in (b"--session", b"--remote", b"--remote-keybindings")
+        else:
+            command.append(arg)
+    return command[:2]
+
+
+# The pids of attached Herdr clients, whose terminal window shows the panes.
+def herdr_clients():
+    pids = []
+    for name in os.listdir("/proc"):
+        if not name.isdigit():
+            continue
+        try:
+            with open(f"/proc/{name}/cmdline", "rb") as f:
+                args = f.read().split(b"\0")
+        except OSError:
+            continue
+        if os.path.basename(args[0]) == b"herdr" and herdr_command(args[1:]) in ([], [b"session", b"attach"]):
+            pids.append(int(name))
+    return pids
+
+
+def window_hosting(pids, windows, title=""):
+    chain = {pid for start in pids for pid, _ in ancestors(start)}
     candidates = [w for w in windows if w.get("pid") in chain]
-    title = session.get("title", "")
     if title:
         titled = [w for w in candidates if title in w.get("title", "")]
         if titled:
@@ -187,9 +226,19 @@ def window_of(session, windows):
     return min(candidates, key=lambda w: w.get("recency", 99)) if candidates else None
 
 
+def window_of(session, windows):
+    return window_hosting([session.get("pid") or 0], windows, session.get("title", ""))
+
+
 def terminal_focused(session):
     active = active_window()
-    if not active or not window_of(session, [active]):
+    if not active:
+        return False
+    if session.get("herdr"):
+        agent = herdr_agent(session["id"])
+        if agent:
+            return bool(agent.get("focused")) and bool(window_hosting(herdr_clients(), [active]))
+    if not window_of(session, [active]):
         return False
     return not session.get("title") or session["title"] in active.get("title", "")
 
@@ -224,6 +273,7 @@ def hook():
         "project": os.path.basename(cwd.rstrip("/")) or cwd,
         "mode": payload.get("permission_mode", session.get("mode", "")),
         "transcript": payload.get("transcript_path") or session.get("transcript", ""),
+        "herdr": os.environ.get("HERDR_ENV") == "1",
         "updated": now,
     })
     pid = claude_pid()
@@ -310,10 +360,28 @@ def mark_seen(target):
             save(session)
 
 
+def focus_herdr(session_id):
+    agent = herdr_agent(session_id)
+    if not agent:
+        return False
+    try:
+        subprocess.run([herdr_bin(), "agent", "focus", agent["pane_id"]], capture_output=True, timeout=2, check=True)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    window = window_hosting(herdr_clients(), clients())
+    if window:
+        focus_window(window["address"])
+    print("herdr")
+    return True
+
+
 def focus(session_id):
     session = load(state_path(session_id))
     if not session:
         return 1
+    if session.get("herdr") and focus_herdr(session_id):
+        mark_seen(session_id)
+        return 0
     window = window_of(session, clients())
     if not window:
         return 1

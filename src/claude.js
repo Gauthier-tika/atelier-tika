@@ -27,6 +27,7 @@ async function live(config) {
       cwd: session.cwd,
       project: session.project,
       pid: session.pid || null,
+      herdr: Boolean(session.herdr),
       since: session.since,
       keys: keysIn(session.title, session.prompt, session.message)
     }))
@@ -151,12 +152,12 @@ function past() {
 
 const watch = onChange => watchDir(stateDir, onChange, { poll: 30000 })
 
+// Where the session was brought forward: 'herdr' (its pane), 'window', or null when not found.
 async function focus(config, id) {
   try {
-    await run('python3', [config.claudeSessionsBin, 'focus', id])
-    return true
+    return (await run('python3', [config.claudeSessionsBin, 'focus', id])).trim() || 'window'
   } catch {
-    return false
+    return null
   }
 }
 

@@ -15,6 +15,8 @@ const sapling = require('./sapling')
 const { Terminals } = require('./terminals')
 const { Runs } = require('./runs')
 
+const herdrInstalled = onPath('herdr')
+
 const adopt = (instance, Class) => instance && Object.setPrototypeOf(instance, Class.prototype)
 
 const freshData = () => ({
@@ -113,6 +115,7 @@ function createServer({ terminals, send, window: currentWindow, hot, shotPath })
       editor: { name: config.editor.name, mode: config.editor.mode },
       editors: editorChoices(),
       terminal: { name: config.terminal.name, switching: Boolean(wm.desktop) },
+      herdr: herdrInstalled,
       devDir: configModule.tilde(config.devDir),
       reposPinned: Boolean(config.repos?.length),
       jira: jiraSettings(),

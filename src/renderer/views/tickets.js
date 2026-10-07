@@ -35,7 +35,7 @@ function claudeChip(ticket) {
   }
   if (s) {
     const [color, label] = sessionLook(s)
-    const where = `Runs in ${ui.state.terminal.name}${ui.state.terminal.switching ? ': switch to it' : ''}`
+    const where = s.herdr ? 'Runs in herdr: switch to it' : `Runs in ${ui.state.terminal.name}${ui.state.terminal.switching ? ': switch to it' : ''}`
     return chip(color, label, [sessionTitle(s, ticket.key), where].filter(Boolean).join('\n'))
   }
   if (ticket.previous) {

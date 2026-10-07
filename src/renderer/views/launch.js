@@ -17,6 +17,7 @@ function renderLaunch(state) {
     <button class="btn primary launch-claude" data-act="claude-repo" title="Start a Claude session with no ticket in ${esc(repo)}"><span class="glyph claude">${G.claude}</span><span class="t">New Claude session</span></button>
     <div class="launch-tools">
       <button class="tool" data-act="shell-repo" title="Open a plain terminal, without Claude, in ${esc(repo)}"><span class="glyph">${G.terminal}</span><span class="t">Terminal</span></button>
+      ${state.herdr ? `<button class="tool" data-act="herdr-open" title="Open a terminal in Atelier and start herdr in it, with the sessions it kept"><span class="glyph">${G.panes}</span><span class="t">herdr</span></button>` : ''}
       <button class="tool" data-act="editor-repo" title="Open ${esc(state.editor.name)} in ${esc(repo)}"><span class="glyph">${G.edit}</span><span class="t">${esc(state.editor.name)}</span></button>
       ${state.sapling ? `<button class="tool" data-act="sl-web" title="Show Sapling Web (sl web) on ${esc(repo)} inside Atelier" ${starting ? 'disabled' : ''}><span class="glyph">${G.smartlog}</span><span class="t">${starting ? 'Starting…' : 'sl web'}</span></button>` : ''}
     </div>
@@ -69,6 +70,7 @@ Object.assign(handlers, {
   'claude-repo': () => act('claudeRepo', { name: pickedRepo() }),
   'shell-repo': () => act('shellRepo', { name: pickedRepo() }),
   'sl-web': () => act('slWeb', { name: pickedRepo() }, 'sl-web'),
+  'herdr-open': () => act('herdrOpen', {}, 'herdr'),
   'editor-repo': () => act('editorRepo', { name: pickedRepo() }),
   'close-web': () => closeWeb(),
   'reload-web': () => {
